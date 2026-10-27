@@ -332,7 +332,7 @@ export {
         $warningsSection->writeln('<error>' . "Entity {$entityName} has been skipped, not ours ..." . '</>');
         continue;
       }
-      $shortName = new ReflectionClass($entityName)->getShortName();
+      $shortName = (new ReflectionClass($entityName))->getShortName();
       if (!($this->entityNamespace ?? null)) {
         // just assume all entities live in the same namespace ...
         $this->entityNamespace = trim(substr(substr($entityName, 0, -strlen($shortName) - 1), strlen($this->phpNamespacePrefix)), '\\');
@@ -378,7 +378,7 @@ export {
           $multiplicity = self::FIELD_TYPE_TO_MANY;
           $nullable = false; // this is always a collection
         }
-        $targetEntity = new ReflectionClass($targetEntityClass)->getShortName();
+        $targetEntity = (new ReflectionClass($targetEntityClass))->getShortName();
         $metaInfo[$fieldName] = [
           'fieldName' => $fieldName,
           'id' => !!self::mappingValue($associationField, 'id'),

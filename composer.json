@@ -1,0 +1,20 @@
+{
+  "name": "rotdrop/nextcloud-app-build-system",
+  "description": "Makefile fragments and helper scripts for building Nextcloud apps",
+  "type": "library",
+  "license": "AGPL-3.0-or-later",
+  "require": {
+    "php": "^8.2",
+    "symfony/console": "^7.0.0"
+  },
+  "suggest": {
+    "cweagans/composer-patches": "^2.0, needed to apply the OCP patch shipped in composer-patches/",
+    "nextcloud/ocp": "dev-stable35, needed by the php-to-typescript scripts",
+    "spatie/typescript-transformer": "needed by the php-to-typescript scripts"
+  },
+  "autoload": {
+    "psr-4": {
+      "OCA\\RotDrop\\DevScripts\\PhpToTypeScript\\": "scripts/php-to-typescript/"
+    }
+  }
+}

@@ -79,7 +79,7 @@ try {
     exit(1);
   }
 
-  $appRoot = realpath(__DIR__ . '/../../../');
+  $appRoot = realpath(ROT_DROP_DEV_SCRIPTS_APP_DIR);
 
   $oldWorkingDir = getcwd();
   if ($oldWorkingDir === false) {

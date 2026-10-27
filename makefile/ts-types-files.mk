@@ -20,10 +20,8 @@ PHP_SOURCES=$(TS_PHP_SOURCE_DIRS:%=--source-dir %)
 TS_TYPES_FILES_DEPS = $(foreach dir,$(TS_PHP_SOURCE_DIRS),$(shell find $(dir) -name "*.php"))
 
 #@private
-$(TS_TYPES_FILES): $(TS_TYPES_FILES_DEPS) $(TYPESCRIPT_CONVERTER) $(wildcard $(ABSSRCDIR)/dev-scripts/lib/scripts/php-to-typescript/*.php) $(MAKEFILE_DEP)
+$(TS_TYPES_FILES): $(TS_TYPES_FILES_DEPS) $(TYPESCRIPT_CONVERTER) $(wildcard $(DEV_LIB_DIR)/scripts/php-to-typescript/*.php) $(MAKEFILE_DEP)
 	$(MAKE) dev-setup
-	rm -rf $(DEV_LIB_DIR)/scripts/vendor $(DEV_LIB_DIR)/scripts/composer.lock $(DEV_LIB_DIR)/scripts/patches.lock.json
-	env COMPOSER=$(DEV_LIB_DIR)/scripts/composer.json $(COMPOSER) -d$(DEV_LIB_DIR)/scripts install
 	$(TYPESCRIPT_CONVERTER) --output-prefix=$(TS_TYPES_DIR) $(PHP_SOURCES) --as-modules --ns-prefix='OCA\$(APP_NAMESPACE)' --scoped-ns-prefix=$(WRAPPER_NAMESPACE_POSTFIX)
 	$(PRETTIER_FORMATTER) --write --ignore-path /dev/null $(TS_TYPES_DIR)
 	[ -x "$(ESLINT)" ] && $(ESLINT) --fix $(TS_TYPES_DIR) && $(ESLINT) $(TS_TYPES_DIR)
@@ -52,5 +50,4 @@ scss-variables: $(TS_TYPES_FILES)
 .PHONY: scss-variables
 
 dev-scripts-real-clean::
-	rm -rf $(DEV_LIB_DIR)scripts/vendor $(DEV_LIBS_DIR)/scripts/composer.lock
 .PHONY: dev-scripts-real-clean

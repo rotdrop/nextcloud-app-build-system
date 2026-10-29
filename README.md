@@ -76,3 +76,4 @@ Compare generated declarations and modules in the consuming application,
 especially when replacing a fork of Spatie's transformer. Database metadata
 generation still requires the existing Nextcloud/CAFEVDB integration; apps
 without it should retain their explicit non-database collectors.
+

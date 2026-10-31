@@ -1,7 +1,7 @@
 # Makefile fragment setting the common build variables, e.g. app-name
 # and namespaces parsed from info.xml. Needs the variables ABSSRCDIR
-# (absolute path of the source directory) and DEV_LIB_DIR set by the
-# including Makefile.
+# (absolute path of the source directory) set by the including
+# Makefile.
 
 APP_INFO = $(ABSSRCDIR)/appinfo/info.xml
 XPATH := $(shell which xpath 2> /dev/null)

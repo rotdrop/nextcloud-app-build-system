@@ -23,7 +23,7 @@ TS_TYPES_PACKAGE_DEPS = $(wildcard $(TS_TYPES_PACKAGE_DIR)/composer.json) $(shel
 
 TS_TYPES_FILES = $(TS_TYPES_DIR)/php-types.d.ts $(TS_TYPES_DIR)/php-modules/ROOT.ts
 PHP_SOURCES=$(TS_PHP_SOURCE_DIRS:%=--source-dir %)
-TS_TYPES_FILES_DEPS = $(foreach dir,$(TS_PHP_SOURCE_DIRS),$(shell find $(dir) -name "*.php"))
+TS_TYPES_FILES_DEPS = $(foreach dir,$(TS_PHP_SOURCE_DIRS),$(shell if [ -d "$(dir)" ]; then find -L "$(dir)" -name "*.php"; fi))
 
 #@private
 $(TS_TYPES_FILES): $(TS_TYPES_FILES_DEPS) $(TYPESCRIPT_CONVERTER) $(TS_TYPES_COMPOSER_DEPS) $(TS_TYPES_PACKAGE_DEPS) $(TS_TYPES_AUTOLOAD) $(MAKEFILE_DEP)

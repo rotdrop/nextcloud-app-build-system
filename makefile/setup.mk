@@ -25,6 +25,15 @@ TS_TYPES_DIR = $(ABSBUILDDIR)/ts-types
 TS_PHP_SOURCE_DIRS = lib vendor-scoped/rotdrop/nextcloud-app-toolkit/src
 WRAPPER_NAMESPACE_POSTFIX = $(SCOPED_NAMESPACE_POSTFIX)
 
+# Composer identifies "files" autoloads by a hash of package and file
+# name. Namespaced copies of a package in different apps would thus
+# suppress each other. The patch prefixes the identifiers with an app
+# specific string. Usage, after "composer dump-autoload" of the
+# namespaced vendor tree:
+#   $(call apply-scoped-autoload-patch,vendor-wrapped)
+SCOPED_AUTOLOAD_PATCH = $(DEV_LIB_DIR)/patches/composer/scoped_autoload_real.patch
+apply-scoped-autoload-patch = cd $(1) && sed -e 's/@FILE_IDENTIFIER_PREFIX@/OCA_$(APP_NAMESPACE)_$(SCOPED_NAMESPACE_POSTFIX)/g' $(SCOPED_AUTOLOAD_PATCH) | patch -p1 -N
+
 # manually invoked helper target; keep it from becoming the default goal
 include $(DEV_LIB_DIR)/makefile/dev-lib-sync.mk
 .DEFAULT_GOAL :=

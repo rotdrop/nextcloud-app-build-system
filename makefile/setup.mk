@@ -24,3 +24,7 @@ TYPESCRIPT_CONVERTER = $(ABSSRCDIR)/dev-scripts/php-to-typescript.php
 TS_TYPES_DIR = $(ABSBUILDDIR)/ts-types
 TS_PHP_SOURCE_DIRS = lib vendor-scoped/rotdrop/nextcloud-app-toolkit/src
 WRAPPER_NAMESPACE_POSTFIX = $(SCOPED_NAMESPACE_POSTFIX)
+
+# manually invoked helper target; keep it from becoming the default goal
+include $(DEV_LIB_DIR)/makefile/dev-lib-sync.mk
+.DEFAULT_GOAL :=

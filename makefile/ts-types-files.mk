@@ -60,7 +60,3 @@ scss-variables: $(TS_TYPES_FILES)
    -e 's/^(\$$[A-Z])/\L\1/g' >> "$(SCSS_VARIABLES_DIR)/$$SCSS_FILE";\
  done
 .PHONY: scss-variables
-
-dev-scripts-real-clean::
-	rm -rf $(DEV_LIB_DIR)scripts/vendor $(DEV_LIBS_DIR)/scripts/composer.lock
-.PHONY: dev-scripts-real-clean

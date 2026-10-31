@@ -75,3 +75,18 @@ Compare generated declarations and modules in the consuming application,
 especially when replacing a fork of Spatie's transformer. Database metadata
 generation still requires the existing Nextcloud/CAFEVDB integration; apps
 without it should retain their explicit non-database collectors.
+
+## Syncing the submodule: `dev-lib-sync`
+
+`makefile/dev-lib-sync.mk` (included by `makefile/setup.mk`) provides the
+manually invoked target `make dev-lib-sync` for local development. It is not
+a prerequisite of any other target and does not become the default goal.
+
+It fetches `origin` in `$(DEV_LIB_DIR)` and moves the submodule to
+`origin/main`. If the submodule pointer changed, only that path is committed
+(`Update dev-scripts/lib to <sha>`, other staged or unstaged work is left
+alone) and pushed to the *currently checked-out branch* of the application
+(`git push origin HEAD:refs/heads/<branch>`, never forced, no other refs).
+It does nothing if already up to date, and refuses on a detached application
+HEAD, uncommitted changes in the submodule, or submodule commits not in
+`origin/main`.

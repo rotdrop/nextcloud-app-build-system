@@ -1,6 +1,56 @@
 # nextcloud-app-build-system
 Kind of library of Makefile fragments and such. Intended as git sub-repo.
 
+## Package translations
+
+Include `makefile/l10n.mk` in the application's Makefile:
+
+```makefile
+ABSSRCDIR = $(CURDIR)
+DEV_LIB_DIR = $(ABSSRCDIR)/dev-scripts/lib
+include $(DEV_LIB_DIR)/makefile/l10n.mk
+```
+
+Run `make l10n-sources` before creating POT files, or add `l10n-sources` as
+a prerequisite of the application's POT target. It generates
+`l10n-sources/toolkit-strings.php` and
+`l10n-sources/vue-components-strings.js`. Set `L10N_SOURCES_DIR` before the
+include to put both files in another directory. Individual destinations can
+be overridden with `APP_TOOLKIT_L10N_DEST` and `VUE_COMPONENTS_L10N_DEST`.
+Use absolute paths for destination overrides when invoking make outside
+the app directory.
+
+The fragment includes the installed toolkit's `tools/l10n.mk` only when
+`composer.json` or `composer.json.in` declares
+`rotdrop/nextcloud-app-toolkit` in `require` or `require-dev`.
+It runs the Vue extractor only when `package.json` declares
+`@rotdrop/nextcloud-vue-components` in `dependencies`, `devDependencies`,
+`optionalDependencies`, or `peerDependencies`. Repository URLs and stale
+installed packages do not enable extraction. Undeclared packages make
+the corresponding targets no-ops; malformed manifests are errors.
+
+Install the declared packages before including/running the fragment. The
+toolkit fragment must exist at parse time (override `APP_TOOLKIT_DIR` for
+a nonstandard Composer vendor directory). The Vue command runs from the
+app directory using `npx --no-install` to avoid implicit package downloads.
+`PHP`, `NODE`, and `NPX` can be overridden. The individual targets `toolkit-l10n` and
+`vue-components-l10n` are also available. Including the fragment does not
+change the application's default goal.
+
+Commit the generated catalogues on each translated branch so the translation
+service can scan them; do not import or execute them, or exclude them via
+`.l10nignore`. Nextcloud's current Transifex bot uses shallow Git clones and
+runs `translationtool.phar create-pot-files` on the checked-out files
+(see its [app translation script](https://github.com/nextcloud/docker-ci/blob/cb72dcd957314fc59eca1a9890dafbe971db1e37/translations-app/handleAppTranslations.sh#L109-L139)).
+It does not run this fragment, so regenerate and commit the catalogues when
+updating the packages.
+
+The output directory can be marked `export-ignore` in the application's
+`.gitattributes` to omit it from Git-generated release archives: this does
+not affect the bot's clones. Do not use that exclusion if another translation
+pipeline extracts strings from `git archive` output or GitHub source archives
+rather than a checkout.
+
 ## PHP to TypeScript
 
 The converter is now provided by the Composer library

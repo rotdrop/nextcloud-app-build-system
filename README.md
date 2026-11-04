@@ -1,6 +1,24 @@
 # nextcloud-app-build-system
 Kind of library of Makefile fragments and such. Intended as git sub-repo.
 
+## Tests
+
+Run the Makefile integration tests from the repository root using Python's
+standard-library `unittest` runner:
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+The tests require Python 3, GNU Make, PHP, Node.js 16.9 or newer, and `patch`.
+They create temporary app fixtures and provide stand-ins for `xpath`, the
+toolkit, and the Vue extractor; no Nextcloud installation, Composer/npm
+dependency installation, or additional Python packages are needed.
+
+The GitHub Actions workflow in `.github/workflows/tests.yml` runs the same
+command on pushes to `main` and on pull requests, and can also be started manually.
+It uses the tools preinstalled on the Ubuntu 24.04 hosted runner.
+
 ## Scoped Composer configuration
 
 Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for
@@ -32,7 +50,7 @@ be overridden with `APP_TOOLKIT_L10N_DEST` and `VUE_COMPONENTS_L10N_DEST`.
 Use absolute paths for destination overrides when invoking make outside
 the app directory.
 
-The fragment includes the installed toolkit's `tools/l10n.mk` only when
+The fragment invokes the installed toolkit's `tools/l10n.mk` only when
 `composer.json` or `composer-$(SCOPED_VENDOR_SUFFIX).json`
 (or either of their `.in` templates) declares
 `rotdrop/nextcloud-app-toolkit` in `require` or `require-dev`.
@@ -46,9 +64,13 @@ It runs the Vue extractor only when `package.json` declares
 installed packages do not enable extraction. Undeclared packages make
 the corresponding targets no-ops; malformed manifests are errors.
 
-Install the declared packages before including/running the fragment. The
-toolkit fragment must exist at parse time (override `APP_TOOLKIT_DIR` for
-a nonstandard Composer vendor directory). The Vue command runs from the
+Install the declared packages before running translation extraction.
+The toolkit fragment is loaded by a sub-make only when `toolkit-l10n` runs,
+so unrelated targets such as `dev` and `realclean` work without an installed
+toolkit. Extraction still fails if the toolkit is missing; a build that
+installs dependencies and extracts translations in one invocation must order
+installation before extraction using prerequisites. Override `APP_TOOLKIT_DIR`
+for a nonstandard Composer vendor directory. The Vue command runs from the
 app directory using `npx --no-install` to avoid implicit package downloads.
 `PHP`, `NODE`, and `NPX` can be overridden. The individual targets `toolkit-l10n` and
 `vue-components-l10n` are also available. Including the fragment does not

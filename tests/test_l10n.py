@@ -227,7 +227,82 @@ class L10nMakefileTest(unittest.TestCase):
     def test_missing_toolkit_fragment_fails(self):
         self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
         (self.app / f"vendor/{TOOLKIT}/tools/l10n.mk").unlink()
-        self.assertIn("l10n.mk", self.make("l10n-sources", success=False).stderr)
+        for target in ("l10n-sources", "toolkit-l10n"):
+            with self.subTest(target=target):
+                result = self.make(target, success=False)
+                self.assertIn("l10n.mk", result.stderr)
+                self.assertFalse(self.output.exists())
+
+    def test_missing_toolkit_does_not_block_unrelated_targets(self):
+        for suffix in ("", "-wrapped"):
+            with self.subTest(suffix=suffix):
+                self.configure_scope("Wrapped")
+                name = f"composer{suffix}.json"
+                self.manifest(name, {"require": {TOOLKIT: "*"}})
+                toolkit = self.app / f"vendor{suffix}/{TOOLKIT}/tools/l10n.mk"
+                if toolkit.exists():
+                    toolkit.unlink()
+                self.write(
+                    "Makefile",
+                    f"include {FRAGMENT}\n"
+                    "dev:\n\t@echo app-dev\n"
+                    "realclean:\n\t@echo app-realclean\n",
+                )
+                self.assertIn("app-dev", self.make().stdout)
+                self.assertIn("app-dev", self.make("dev").stdout)
+                self.assertIn("app-realclean", self.make("realclean").stdout)
+                self.make("-n", "dev")
+                self.assertFalse(self.output.exists())
+                (self.app / name).unlink()
+
+    def test_toolkit_installed_during_same_make_invocation(self):
+        self.configure_scope("Wrapped")
+        self.manifest("composer-wrapped.json", {"require": {TOOLKIT: "*"}})
+        source = self.app / f"vendor/{TOOLKIT}/tools/l10n.mk"
+        destination = self.app / f"vendor-wrapped/{TOOLKIT}/tools/l10n.mk"
+        self.write(
+            "Makefile",
+            f"include {FRAGMENT}\n"
+            "toolkit-l10n: install-toolkit\n"
+            "install-toolkit:\n"
+            f'\t@mkdir -p "{destination.parent}"\n'
+            f'\t@cp "{source}" "{destination}"\n',
+        )
+        self.make("-j2", "l10n-sources")
+        self.assertEqual((self.output / "toolkit-strings.php").read_text(), "toolkit")
+
+    def test_toolkit_submake_receives_makefile_overrides(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.install_toolkit("custom-vendor")
+        self.write(
+            "Makefile",
+            f"APP_TOOLKIT_DIR := {self.app / 'custom-vendor' / TOOLKIT}\n"
+            f"L10N_SOURCES_DIR := {self.app / 'custom-catalogues'}\n"
+            "PHP := php -d memory_limit=128M\n"
+            f"include {FRAGMENT}\n",
+        )
+        self.write(
+            f"custom-vendor/{TOOLKIT}/tools/l10n.mk",
+            "toolkit-l10n:\n"
+            '\t@test "$(ABSSRCDIR)" = "$(CURDIR)"\n'
+            '\t@test "$(APP_TOOLKIT_DIR)" = "$(CURDIR)/custom-vendor/'
+            f'{TOOLKIT}"\n'
+            '\t@test "$(PHP)" = "php -d memory_limit=128M"\n'
+            '\t@mkdir -p "$(dir $(APP_TOOLKIT_L10N_DEST))"\n'
+            '\t@printf toolkit > "$(APP_TOOLKIT_L10N_DEST)"\n',
+        )
+        self.make("l10n-sources")
+        self.assertEqual(
+            (self.app / "custom-catalogues/toolkit-strings.php").read_text(),
+            "toolkit",
+        )
+
+    def test_toolkit_extractor_failure_propagates(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.write(f"vendor/{TOOLKIT}/tools/l10n.mk", "toolkit-l10n:\n\t@exit 23\n")
+        result = self.make("l10n-sources", success=False)
+        self.assertIn("23", result.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_extractor_failure_propagates(self):
         self.manifest("package.json", {"dependencies": {VUE_COMPONENTS: "*"}})

@@ -36,12 +36,13 @@ endif
 
 _L10N_TOOLKIT_VENDOR_DIR := $(patsubst composer%.json,vendor%,$(patsubst %.in,%,$(notdir $(firstword $(_L10N_TOOLKIT_MANIFESTS)))))
 
-ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
-include $(APP_TOOLKIT_DIR)/tools/l10n.mk
-else
 toolkit-l10n:
-.PHONY: toolkit-l10n
+ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
+	$(MAKE) --no-print-directory -f "$(APP_TOOLKIT_DIR)/tools/l10n.mk" \
+		ABSSRCDIR="$(ABSSRCDIR)" APP_TOOLKIT_DIR="$(APP_TOOLKIT_DIR)" \
+		APP_TOOLKIT_L10N_DEST="$(APP_TOOLKIT_L10N_DEST)" PHP="$(PHP)" toolkit-l10n
 endif
+.PHONY: toolkit-l10n
 
 #@@ Generate package string catalogues before creating the app's POT files.
 l10n-sources: toolkit-l10n vue-components-l10n

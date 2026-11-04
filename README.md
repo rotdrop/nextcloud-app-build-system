@@ -31,6 +31,63 @@ Missing or empty XML configuration and a missing matching Composer manifest
 are errors; a `.json.in` template alone does not satisfy this requirement.
 The fragments require the `xpath` binary.
 
+### Building the scoped vendor tree
+
+After `setup.mk` and `composer.mk`, include the shared build rules:
+
+```makefile
+include $(DEV_LIB_DIR)/makefile/composer.mk
+include $(DEV_LIB_DIR)/makefile/namespace-wrapper.mk
+
+dev-setup: namespace-wrapper
+```
+
+`make namespace-wrapper` installs PHP-Scoper via the Composer bin plugin,
+installs and updates `composer-$(SCOPED_VENDOR_SUFFIX).json` in `$(BUILDDIR)`,
+and scopes its vendor tree into the application directory. Keep the app's
+`scoper.inc.php` and matching Composer manifest; its `config.vendor-dir` and
+the scoper Finder must use `vendor-$(SCOPED_VENDOR_SUFFIX)`.
+The fragment requires the existing `COMPOSER`, `COMPOSER_OPTIONS`, `BUILDDIR`,
+`ABSSRCDIR`, and `DEV_LIB_DIR` settings. `PHP_SCOPER` and `MAKEFILE_DEP` default
+to the bin-plugin executable and `Makefile`, respectively.
+
+The final scoping rule preserves cafevdb's workarounds: copy `bin` (including
+symlinks) from the build tree when present, restore executable permissions,
+regenerate Composer's autoload maps, and patch file identifiers when the
+generated autoloader contains `filesToLoad`. Apps without Composer binaries
+or file autoloads are supported. The include preserves the app's default goal.
+It also provides `php-scoper-install`, the suffixed vendor/autoload targets,
+and `composer-$(SCOPED_VENDOR_SUFFIX)-suggest`, attached to `composer-suggest`.
+
+For **cafevdb on nextcloud35**, retain its `WRAPPER_GIT_DEPENDENCIES` list
+and set this before the include:
+
+```makefile
+SCOPED_VENDOR_LINK_DIRS = 3rdparty vendor
+include $(DEV_LIB_DIR)/makefile/namespace-wrapper.mk
+```
+
+The fragment then maintains `wrapper-build-hash` and rebuilds when a listed
+repository's HEAD changes. Keep the app-specific `namespace-wrapper-patch`
+and `namespace-wrapper-unpatch` rules and their namespace/file lists.
+
+For **nextcloud-app-dokuwiki**, preserve its production-only update:
+
+```makefile
+SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev
+include $(DEV_LIB_DIR)/makefile/namespace-wrapper.mk
+```
+
+In either app, replace the local PHP-Scoper installation, scoped Composer
+lock/build/autoload, scoped vendor/autoload, and `namespace-wrapper` rules
+with the include. For cafevdb also remove the local hash and
+`composer-wrapped-suggest` rules; the fragment supplies them.
+Keep app-specific translation extraction separate (or use `l10n.mk` below).
+`SCOPED_VENDOR_LINK_DIRS` defaults to `vendor`; its entries are app-relative
+directories symlinked into the build directory for Composer path repositories.
+`SCOPED_COMPOSER_UPDATE_OPTIONS` defaults to empty and augments
+`COMPOSER_OPTIONS` only for the scoped update command.
+
 ## Package translations
 
 Include `makefile/l10n.mk` in the application's Makefile:

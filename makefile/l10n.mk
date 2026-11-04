@@ -5,18 +5,23 @@ ABSSRCDIR ?= $(CURDIR)
 PHP ?= php
 NODE ?= node
 NPX ?= npx
+include $(dir $(lastword $(MAKEFILE_LIST)))scoped-vendor.mk
 L10N_SOURCES_DIR ?= $(ABSSRCDIR)/l10n-sources
-APP_TOOLKIT_DIR ?= $(ABSSRCDIR)/vendor/rotdrop/nextcloud-app-toolkit
+APP_TOOLKIT_DIR ?= $(ABSSRCDIR)/$(_L10N_TOOLKIT_VENDOR_DIR)/rotdrop/nextcloud-app-toolkit
 APP_TOOLKIT_L10N_DEST ?= $(L10N_SOURCES_DIR)/toolkit-strings.php
 VUE_COMPONENTS_L10N_DEST ?= $(L10N_SOURCES_DIR)/vue-components-strings.js
 
 _L10N_DEFAULT_GOAL := $(.DEFAULT_GOAL)
-_L10N_COMPOSER_MANIFESTS := $(wildcard $(ABSSRCDIR)/composer.json $(ABSSRCDIR)/composer.json.in)
-_L10N_HAS_TOOLKIT :=
+_L10N_COMPOSER_MANIFESTS := $(strip \
+	$(wildcard $(ABSSRCDIR)/composer.json $(ABSSRCDIR)/composer.json.in) \
+	$(wildcard \
+		$(ABSSRCDIR)/composer-$(SCOPED_VENDOR_SUFFIX).json \
+		$(ABSSRCDIR)/composer-$(SCOPED_VENDOR_SUFFIX).json.in))
+_L10N_TOOLKIT_MANIFESTS :=
 _L10N_HAS_VUE_COMPONENTS :=
 
 ifneq ($(_L10N_COMPOSER_MANIFESTS),)
-_L10N_HAS_TOOLKIT := $(shell $(PHP) -r 'foreach (array_slice($$argv, 1) as $$file) { $$json = json_decode(file_get_contents($$file), true, 512, JSON_THROW_ON_ERROR); if (isset($$json["require"]["rotdrop/nextcloud-app-toolkit"]) || isset($$json["require-dev"]["rotdrop/nextcloud-app-toolkit"])) { echo "yes"; } }' $(_L10N_COMPOSER_MANIFESTS))
+_L10N_TOOLKIT_MANIFESTS := $(shell $(PHP) -r 'foreach (array_slice($$argv, 1) as $$file) { $$json = json_decode(file_get_contents($$file), true, 512, JSON_THROW_ON_ERROR); if (isset($$json["require"]["rotdrop/nextcloud-app-toolkit"]) || isset($$json["require-dev"]["rotdrop/nextcloud-app-toolkit"])) { echo $$file, "\n"; } }' $(_L10N_COMPOSER_MANIFESTS))
 ifneq ($(.SHELLSTATUS),0)
 $(error Cannot read Composer manifests for translation extraction)
 endif
@@ -29,7 +34,9 @@ $(error Cannot read package.json for translation extraction)
 endif
 endif
 
-ifneq ($(_L10N_HAS_TOOLKIT),)
+_L10N_TOOLKIT_VENDOR_DIR := $(patsubst composer%.json,vendor%,$(patsubst %.in,%,$(notdir $(firstword $(_L10N_TOOLKIT_MANIFESTS)))))
+
+ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
 include $(APP_TOOLKIT_DIR)/tools/l10n.mk
 else
 toolkit-l10n:

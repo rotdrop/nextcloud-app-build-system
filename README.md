@@ -1,6 +1,18 @@
 # nextcloud-app-build-system
 Kind of library of Makefile fragments and such. Intended as git sub-repo.
 
+## Scoped Composer configuration
+
+Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for
+example `<scopednamespace>Wrapped</scopednamespace>`. The setup and translation
+fragments derive `SCOPED_NAMESPACE_POSTFIX` from this value and
+`SCOPED_VENDOR_SUFFIX` from its lowercase form. Provide the corresponding
+`composer-wrapped.json` and install its dependencies into `vendor-wrapped`.
+No namespace or suffix variables need to be set in the consuming Makefile.
+Missing or empty XML configuration and a missing matching Composer manifest
+are errors; a `.json.in` template alone does not satisfy this requirement.
+The fragments require the `xpath` binary.
+
 ## Package translations
 
 Include `makefile/l10n.mk` in the application's Makefile:
@@ -21,8 +33,13 @@ Use absolute paths for destination overrides when invoking make outside
 the app directory.
 
 The fragment includes the installed toolkit's `tools/l10n.mk` only when
-`composer.json` or `composer.json.in` declares
+`composer.json` or `composer-$(SCOPED_VENDOR_SUFFIX).json`
+(or either of their `.in` templates) declares
 `rotdrop/nextcloud-app-toolkit` in `require` or `require-dev`.
+Toolkit paths default to the matching vendor tree (`vendor` or
+`vendor-$(SCOPED_VENDOR_SUFFIX)`). If multiple manifests declare the toolkit,
+the root manifest/template takes precedence. Unrelated suffixed manifests
+are not scanned.
 It runs the Vue extractor only when `package.json` declares
 `@rotdrop/nextcloud-vue-components` in `dependencies`, `devDependencies`,
 `optionalDependencies`, or `peerDependencies`. Repository URLs and stale
@@ -36,6 +53,11 @@ app directory using `npx --no-install` to avoid implicit package downloads.
 `PHP`, `NODE`, and `NPX` can be overridden. The individual targets `toolkit-l10n` and
 `vue-components-l10n` are also available. Including the fragment does not
 change the application's default goal.
+
+`makefile/setup.mk` also uses the XML-derived suffix for the toolkit's
+PHP-to-TypeScript source directory. Its
+`apply-scoped-autoload-patch` helper accepts the vendor directory as its
+argument; the Composer patch uses relative paths and works with any suffix.
 
 Commit the generated catalogues on each translated branch so the translation
 service can scan them; do not import or execute them, or exclude them via

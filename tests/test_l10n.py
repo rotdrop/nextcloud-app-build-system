@@ -17,15 +17,17 @@ class L10nMakefileTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.app = Path(self.temporary.name)
         self.output = self.app / "l10n-sources"
+        self.configure_scope("Scoped")
+        self.write(
+            "xpath",
+            "#!/usr/bin/env python3\n"
+            "import sys, xml.etree.ElementTree as ET\n"
+            "print(ET.parse(sys.argv[-1]).getroot().findtext('scopednamespace', ''))\n",
+        )
+        (self.app / "xpath").chmod(0o755)
         self.write("Makefile", f"include {FRAGMENT}\nall:\n\t@echo app-default\n")
         # Stand-ins make inclusion and invocation observable without installing packages.
-        self.write(
-            f"vendor/{TOOLKIT}/tools/l10n.mk",
-            'toolkit-l10n:\n'
-            '\t@mkdir -p "$(dir $(APP_TOOLKIT_L10N_DEST))"\n'
-            '\t@printf toolkit > "$(APP_TOOLKIT_L10N_DEST)"\n'
-            '.PHONY: toolkit-l10n\n',
-        )
+        self.install_toolkit("vendor")
         self.write(
             "npx",
             "#!/usr/bin/env python3\n"
@@ -39,6 +41,20 @@ class L10nMakefileTest(unittest.TestCase):
         )
         (self.app / "npx").chmod(0o755)
 
+    def install_toolkit(self, vendor):
+        self.write(
+            f"{vendor}/{TOOLKIT}/tools/l10n.mk",
+            'toolkit-l10n:\n'
+            '\t@mkdir -p "$(dir $(APP_TOOLKIT_L10N_DEST))"\n'
+            '\t@printf toolkit > "$(APP_TOOLKIT_L10N_DEST)"\n'
+            '.PHONY: toolkit-l10n\n',
+        )
+
+    def configure_scope(self, namespace):
+        self.write("appinfo/info.xml",
+                   f"<info><scopednamespace>{namespace}</scopednamespace></info>")
+        self.manifest(f"composer-{namespace.lower()}.json", {})
+
     def write(self, name, content):
         path = self.app / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -50,7 +66,7 @@ class L10nMakefileTest(unittest.TestCase):
     def make(self, *arguments, success=True, env=None):
         result = subprocess.run(
             ["make", "--no-print-directory", "-C", str(self.app),
-             f"NPX={self.app / 'npx'}", *arguments],
+             f"NPX={self.app / 'npx'}", f"XPATH={self.app / 'xpath'}", *arguments],
             text=True, capture_output=True, env=env,
         )
         if success:
@@ -86,6 +102,47 @@ class L10nMakefileTest(unittest.TestCase):
         self.manifest("composer.json.in", {"require": {TOOLKIT: "*"}})
         self.make("l10n-sources")
         self.assertTrue((self.output / "toolkit-strings.php").is_file())
+
+    def test_suffixed_composer_manifests_and_vendor_trees(self):
+        (self.app / f"vendor/{TOOLKIT}/tools/l10n.mk").unlink()
+        self.manifest("composer.json", {})
+        for suffix in ("scoped", "wrapped", "custom"):
+            self.configure_scope(suffix.title())
+            self.install_toolkit(f"vendor-{suffix}")
+            for template in ("", ".in"):
+                for section in ("require", "require-dev"):
+                    with self.subTest(suffix=suffix, template=template, section=section):
+                        name = f"composer-{suffix}.json{template}"
+                        self.manifest(name, {section: {TOOLKIT: "*"}})
+                        self.make("l10n-sources")
+                        destination = self.output / "toolkit-strings.php"
+                        self.assertEqual(destination.read_text(), "toolkit")
+                        destination.unlink()
+                        (self.app / name).unlink()
+                        self.manifest(f"composer-{suffix}.json", {})
+            (self.app / f"vendor-{suffix}/{TOOLKIT}/tools/l10n.mk").unlink()
+
+    def test_root_toolkit_takes_precedence_over_suffixed_manifests(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.manifest("composer-scoped.json", {"require": {TOOLKIT: "*"}})
+        self.manifest("composer-wrapped.json", {"require-dev": {TOOLKIT: "*"}})
+        self.make("l10n-sources")
+        self.assertEqual((self.output / "toolkit-strings.php").read_text(), "toolkit")
+
+    def test_suffixed_manifests_without_dependency_do_not_enable_extraction(self):
+        for suffix in ("scoped", "wrapped"):
+            self.install_toolkit(f"vendor-{suffix}")
+            self.manifest(f"composer-{suffix}.json", {"repositories": [{"url": TOOLKIT}]})
+        self.make("l10n-sources")
+        self.assertFalse(self.output.exists())
+
+    def test_toolkit_directory_override(self):
+        self.configure_scope("Wrapped")
+        self.manifest("composer-wrapped.json", {"require": {TOOLKIT: "*"}})
+        self.install_toolkit("custom-vendor")
+        self.make("l10n-sources",
+                  f"APP_TOOLKIT_DIR={self.app / 'custom-vendor' / TOOLKIT}")
+        self.assertEqual((self.output / "toolkit-strings.php").read_text(), "toolkit")
 
     def test_npm_dependency_sections(self):
         for section in ("dependencies", "devDependencies", "optionalDependencies",
@@ -130,12 +187,42 @@ class L10nMakefileTest(unittest.TestCase):
                 self.assertFalse(self.output.exists())
 
     def test_malformed_manifests_fail_explicitly(self):
-        for name in ("composer.json", "composer.json.in", "package.json"):
+        for name in ("composer.json", "composer.json.in", "composer-scoped.json",
+                     "composer-scoped.json.in", "package.json"):
             with self.subTest(name=name):
                 self.write(name, "{")
                 result = self.make("l10n-sources", success=False)
                 self.assertIn("Cannot read", result.stderr)
                 (self.app / name).unlink()
+                self.manifest("composer-scoped.json", {})
+
+    def test_unrelated_suffixed_manifest_is_ignored(self):
+        self.write("composer-wrapped.json", "{")
+        self.make("l10n-sources")
+        self.assertFalse(self.output.exists())
+
+    def test_scope_configuration_is_required(self):
+        for contents in ("<info/>", "<info><scopednamespace/></info>", "<info>"):
+            with self.subTest(contents=contents):
+                self.write("appinfo/info.xml", contents)
+                result = self.make("l10n-sources", success=False)
+                self.assertIn("scopednamespace", result.stderr)
+        (self.app / "appinfo/info.xml").unlink()
+        self.assertIn("Cannot read scopednamespace",
+                      self.make("l10n-sources", success=False).stderr)
+
+    def test_matching_manifest_is_required_even_with_template(self):
+        self.configure_scope("Wrapped")
+        (self.app / "composer-wrapped.json").unlink()
+        self.manifest("composer-wrapped.json.in", {})
+        result = self.make("l10n-sources", success=False)
+        self.assertIn("composer-wrapped.json is missing", result.stderr)
+
+    def test_malformed_scoped_manifest_fails_even_with_root_toolkit(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.write("composer-scoped.json", "{")
+        result = self.make("l10n-sources", success=False)
+        self.assertIn("Cannot read Composer manifests", result.stderr)
 
     def test_missing_toolkit_fragment_fails(self):
         self.manifest("composer.json", {"require": {TOOLKIT: "*"}})

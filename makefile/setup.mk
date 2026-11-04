@@ -3,16 +3,11 @@
 # (absolute path of the source directory) set by the including
 # Makefile.
 
-APP_INFO = $(ABSSRCDIR)/appinfo/info.xml
-XPATH := $(shell which xpath 2> /dev/null)
-ifeq ($(XPATH),)
-$(error The xpath binary could not be found, it is needed to parse $(APP_INFO))
-endif
+include $(dir $(lastword $(MAKEFILE_LIST)))scoped-vendor.mk
 # evaluate the (expensive) xpath look-ups only once
 APP_NAME := $(shell $(XPATH) -q -e '/info/id/text()' $(APP_INFO))
 APP_VERSION := $(shell $(XPATH) -q -e '/info/version/text()' $(APP_INFO))
 APP_NAMESPACE := $(shell $(XPATH) -q -e '/info/namespace/text()' $(APP_INFO))
-SCOPED_NAMESPACE_POSTFIX := $(shell $(XPATH) -q -e '/info/scopednamespace/text()' $(APP_INFO))
 CLOUD_MAX_VERSION := $(shell $(XPATH) -q -e 'string(/info/dependencies/nextcloud/@max-version)' $(APP_INFO))
 
 BUILDDIR = ./build
@@ -22,7 +17,7 @@ DOWNLOADS_DIR = ./downloads
 CONFIG_DIR = ./config
 TYPESCRIPT_CONVERTER = $(ABSSRCDIR)/dev-scripts/php-to-typescript.php
 TS_TYPES_DIR = $(ABSBUILDDIR)/ts-types
-TS_PHP_SOURCE_DIRS = lib vendor-scoped/rotdrop/nextcloud-app-toolkit/src
+TS_PHP_SOURCE_DIRS = lib vendor-$(SCOPED_VENDOR_SUFFIX)/rotdrop/nextcloud-app-toolkit/src
 WRAPPER_NAMESPACE_POSTFIX = $(SCOPED_NAMESPACE_POSTFIX)
 
 # Composer identifies "files" autoloads by a hash of package and file
@@ -30,7 +25,7 @@ WRAPPER_NAMESPACE_POSTFIX = $(SCOPED_NAMESPACE_POSTFIX)
 # suppress each other. The patch prefixes the identifiers with an app
 # specific string. Usage, after "composer dump-autoload" of the
 # namespaced vendor tree:
-#   $(call apply-scoped-autoload-patch,vendor-wrapped)
+#   $(call apply-scoped-autoload-patch,vendor-$(SCOPED_VENDOR_SUFFIX))
 SCOPED_AUTOLOAD_PATCH = $(DEV_LIB_DIR)/patches/composer/scoped_autoload_real.patch
 apply-scoped-autoload-patch = cd $(1) && sed -e 's/@FILE_IDENTIFIER_PREFIX@/OCA_$(APP_NAMESPACE)_$(SCOPED_NAMESPACE_POSTFIX)/g' $(SCOPED_AUTOLOAD_PATCH) | patch -p1 -N
 

@@ -129,7 +129,31 @@ class NpmMakefileTest(unittest.TestCase):
         self.make("npm-dev")
         self.assertEqual((self.app / "build-flavour").read_text(), "dev\n")
         self.assertEqual((self.app / "npm.log").read_text(), "run dev\n")
-        self.assertEqual((self.app / "clean.log").read_text(), "clean\n")
+        self.assertFalse((self.app / "clean.log").exists())
+
+    def test_flavour_switch_cleans_only_bundler_outputs(self):
+        self.write("build-flavour", "dev\n")
+        for name in (
+            "build/vendor-wrapped/.composer-ready",
+            "build/ts-types/php-types.d.ts",
+            "build/scss-variables/app.scss",
+            "vendor-wrapped/.scoper-ready",
+            "js/stale.js",
+            "css/stale.css",
+        ):
+            self.write(name, "")
+
+        self.make("npm-build")
+
+        self.assertEqual((self.app / "build-flavour").read_text(), "build\n")
+        self.assertTrue((self.app / "build/vendor-wrapped/.composer-ready").exists())
+        self.assertTrue((self.app / "build/ts-types/php-types.d.ts").exists())
+        self.assertTrue((self.app / "build/scss-variables/app.scss").exists())
+        self.assertTrue((self.app / "vendor-wrapped/.scoper-ready").exists())
+        self.assertFalse((self.app / "js/stale.js").exists())
+        self.assertFalse((self.app / "css/stale.css").exists())
+        self.assertFalse((self.app / "clean.log").exists())
+        self.assertTrue((self.app / "js/asset-meta.json").exists())
 
     def test_failed_build_removes_asset_metadata(self):
         self.make("npm-build", success=False, env={**os.environ, "FAIL_BUILD": "1"})

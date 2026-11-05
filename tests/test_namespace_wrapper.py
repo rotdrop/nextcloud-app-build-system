@@ -169,6 +169,41 @@ class NamespaceWrapperTest(unittest.TestCase):
         self.make("namespace-wrapper", WITH_BIN="1")
         self.assertEqual(sum(c[0] == "scoper" for c in self.commands()), 2)
 
+    def test_build_flavour_switches_preserve_scoped_vendor(self):
+        self.configure("Wrapped")
+        for name in ("package.json", "package-lock.json", "webpack.config.js",
+                     "eslint.config.mjs"):
+            self.write(name, "")
+        (self.app / "node_modules").mkdir()
+        self.executable(
+            "npm",
+            "#!/bin/sh\n"
+            "if [ \"$1\" = run ]; then echo \"$2\" >> npm.log; fi\n"
+            "mkdir -p js css\n"
+            "echo built > js/asset-meta.json\n",
+        )
+        with (self.app / "Makefile").open("a") as makefile:
+            makefile.write(
+                f"NPM = {self.app}/npm\n"
+                f"include {ROOT}/makefile/npm.mk\n"
+                ".DEFAULT_GOAL := all\n"
+            )
+
+        self.make("namespace-wrapper")
+        self.make("npm-build")
+        self.make("namespace-wrapper")
+        self.make("npm-build")
+        self.make("npm-dev")
+        self.make("namespace-wrapper")
+        self.make("npm-build")
+        self.make("namespace-wrapper")
+
+        self.assertEqual(sum(c[0] == "scoper" for c in self.commands()), 1)
+        self.assertEqual(
+            (self.app / "npm.log").read_text().splitlines(),
+            ["build", "dev", "build"],
+        )
+
     def test_dokuwiki_without_binaries_or_file_autoloads(self):
         self.configure("Scoped", "SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev")
         self.make("namespace-wrapper", NO_FILES="1")

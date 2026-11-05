@@ -26,8 +26,10 @@ prerequisites, `BUNDLER_TARGETS` for generated assets (default:
 `$(ABSSRCDIR)/js/asset-meta.json`), and `make bundler-clean` to remove generated
 files from `js/` and `css/`. Set variables before including the fragment.
 `npm-dev` and `npm-build` still run the application's `dev` and `build`
-npm scripts. Set `BUNDLER_CONFIG` to the actual configuration file; its
-legacy default remains `webpack.config.js` for apps that do not override it.
+npm scripts. Switching build flavour clears only these bundler outputs, leaving
+other generated build inputs intact. Set `BUNDLER_CONFIG` to the actual
+configuration file; its legacy default remains `webpack.config.js` for apps
+that do not override it.
 
 Existing apps can update the shared library without changing their Makefiles:
 `WEBPACK_DEPS` is still accepted and exposes the resolved `BUNDLER_DEPS`,

@@ -19,6 +19,36 @@ The GitHub Actions workflow in `.github/workflows/tests.yml` runs the same
 command on pushes to `main` and on pull requests, and can also be started manually.
 It uses the tools preinstalled on the Ubuntu 24.04 hosted runner.
 
+## JavaScript bundler targets
+
+`makefile/npm.mk` uses `BUNDLER_DEPS` for application-specific build
+prerequisites, `BUNDLER_TARGETS` for generated assets (default:
+`$(ABSSRCDIR)/js/asset-meta.json`), and `make bundler-clean` to remove generated
+files from `js/` and `css/`. Set variables before including the fragment.
+`npm-dev` and `npm-build` still run the application's `dev` and `build`
+npm scripts. Set `BUNDLER_CONFIG` to the actual configuration file; its
+legacy default remains `webpack.config.js` for apps that do not override it.
+
+Existing apps can update the shared library without changing their Makefiles:
+`WEBPACK_DEPS` is still accepted and exposes the resolved `BUNDLER_DEPS`,
+`WEBPACK_TARGETS` exposes `BUNDLER_TARGETS`, and `webpack-clean` remains a
+compatibility alias for `bundler-clean`. New code should use the neutral names.
+
+The default-branch Makefiles of all eight consuming apps were checked.
+All already set `BUNDLER_CONFIG = vite.config.ts`; no config rename is needed.
+To migrate their remaining names:
+
+| App | Makefile changes |
+| --- | --- |
+| bav | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| cafevdb | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`, including the JSDoc and TypeDoc prerequisites. |
+| cafevdbmembers | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| dokuwiki | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| files_archive | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| mail_roundcube | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| pdf_downloader | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+| redaxo | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
+
 ## Scoped Composer configuration
 
 Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for

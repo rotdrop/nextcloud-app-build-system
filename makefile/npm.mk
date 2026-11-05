@@ -1,12 +1,15 @@
-# Make fragment for some generic npm / webpack related targets
+# Make fragment for generic npm / bundler related targets
 
-WEBPACK_TARGETS = $(ABSSRCDIR)/js/asset-meta.json
+BUNDLER_TARGETS ?= $(ABSSRCDIR)/js/asset-meta.json
 
 ifeq ($(BUNDLER_CONFIG),)
 BUNDLER_CONFIG = webpack.config.js
 endif
 
-WEBPACK_DEPS := $(sort $(WEBPACK_DEPS) $(MAKEFILE_DEP) node_modules package-lock.json package.json $(BUNDLER_CONFIG) eslint.config.mjs)
+# Accept legacy dependency inputs and expose the resolved values to older apps.
+BUNDLER_DEPS := $(sort $(BUNDLER_DEPS) $(WEBPACK_DEPS) $(MAKEFILE_DEP) node_modules package-lock.json package.json $(BUNDLER_CONFIG) eslint.config.mjs)
+WEBPACK_DEPS = $(BUNDLER_DEPS)
+WEBPACK_TARGETS = $(BUNDLER_TARGETS)
 
 #@private
 package-lock.json: package.json $(BUNDLER_CONFIG) $(MAKEFILE_DEP) $(THIRD_PARTY_NPM_DEPS)
@@ -40,17 +43,17 @@ endif
 .PHONY: build-flavour-build
 
 #@private
-$(WEBPACK_TARGETS): $(BUILD_FLAVOUR_FILE) $(WEBPACK_DEPS)
-	make webpack-clean
-	@env LC_ALL=C $(MAKE) $(WEBPACK_DEPS)
-	$(NPM) run $(shell cat $(BUILD_FLAVOUR_FILE)) || { status=$$?; rm -f $(WEBPACK_TARGETS); exit $$status; }
+$(BUNDLER_TARGETS): $(BUILD_FLAVOUR_FILE) $(BUNDLER_DEPS)
+	$(MAKE) bundler-clean
+	@env LC_ALL=C $(MAKE) $(BUNDLER_DEPS)
+	$(NPM) run $(shell cat $(BUILD_FLAVOUR_FILE)) || { status=$$?; rm -f $(BUNDLER_TARGETS); exit $$status; }
 
 #@private
-npm-dev: build-flavour-dev $(WEBPACK_TARGETS)
+npm-dev: build-flavour-dev $(BUNDLER_TARGETS)
 .PHONY: npm-dev
 
 #@private
-npm-build: build-flavour-build $(WEBPACK_TARGETS)
+npm-build: build-flavour-build $(BUNDLER_TARGETS)
 .PHONY: npm-build
 
 #@@ Linting
@@ -73,8 +76,12 @@ stylelint-fix:
 	$(NPM) run stylelint:fix
 .PHONY: stylelint-
 
-#@@ Removes WebPack builds
-webpack-clean:
+#@@ Removes bundler builds
+bundler-clean:
 	rm -rf ./js/*
 	rm -rf ./css/*
+.PHONY: bundler-clean
+
+#@private
+webpack-clean: bundler-clean
 .PHONY: webpack-clean

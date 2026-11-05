@@ -49,6 +49,22 @@ To migrate their remaining names:
 | pdf_downloader | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
 | redaxo | Rename `WEBPACK_DEPS` to `BUNDLER_DEPS`; use `bundler-clean` in `mostlyclean`. |
 
+## Consuming app repositories
+
+The consuming app names used in this documentation map to these GitHub
+repositories:
+
+| App | GitHub repository |
+| --- | --- |
+| bav | [rotdrop/nextcloud-app-bav](https://github.com/rotdrop/nextcloud-app-bav) |
+| cafevdb | [rotdrop/cafevdb](https://github.com/rotdrop/cafevdb) |
+| cafevdbmembers | [rotdrop/cafevdb-members](https://github.com/rotdrop/cafevdb-members) |
+| dokuwiki | [rotdrop/nextcloud-app-dokuwiki](https://github.com/rotdrop/nextcloud-app-dokuwiki) |
+| files_archive | [rotdrop/nextcloud-app-files-archive](https://github.com/rotdrop/nextcloud-app-files-archive) |
+| mail_roundcube | [rotdrop/nextcloud-roundcube](https://github.com/rotdrop/nextcloud-roundcube) |
+| pdf_downloader | [rotdrop/nextcloud-app-pdf-downloader](https://github.com/rotdrop/nextcloud-app-pdf-downloader) |
+| redaxo | [rotdrop/nextcloud-app-redaxo](https://github.com/rotdrop/nextcloud-app-redaxo) |
+
 ## Scoped Composer configuration
 
 Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for

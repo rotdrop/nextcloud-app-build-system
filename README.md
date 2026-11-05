@@ -133,6 +133,72 @@ app directory using `npx --no-install` to avoid implicit package downloads.
 `vue-components-l10n` are also available. Including the fragment does not
 change the application's default goal.
 
+### Excluding unused package files
+
+For Vite apps, run `make l10n-ignore` (also named
+`vue-components-l10n-ignore`) explicitly before `make l10n-sources`. It
+builds the app's Vite configuration in both development and production modes,
+without emitting build assets or emptying output directories, and updates
+only a marked generated section in `.l10nignore`. Existing handwritten entries
+are preserved. The app must have Vite installed; its plugins still run,
+including any plugin-specific side effects. Vite loads its configuration
+normally, including TypeScript configs and async config factories.
+
+Set `L10N_VITE_CONFIG` for another config file (the default is Vite's normal
+auto-discovery) and `L10N_VITE_MODES`
+for another space-separated list of modes. The config must cover **all**
+runtime entry points and feature variants used by the app. Apps needing custom
+environment switches should provide a wrapper config covering all relevant
+entries or modes. This integration uses Vite's build API, not an import scanner,
+and supports Vite's Rollup and Rolldown backends.
+
+Only library source files absent from every analyzed module graph are excluded.
+Lazy chunks, transitive imports, and even parsed
+but tree-shaken modules are retained deliberately; barrel imports can therefore
+keep more translations than strictly necessary. Compilation errors, warnings,
+unresolved runtime dynamic imports (including `@vite-ignore` imports), and
+directly externalized library modules abort generation without changing the
+ignore file. This is static
+build analysis, not proof of runtime non-use: custom loaders, external mappings,
+or runtime discovery that bypass Vite's dependency tracking require review.
+Watched loader inputs are also retained when exposed by Rollup; Rolldown does
+not currently expose those inputs, so files read only by plugins need keep
+entries.
+
+For files used outside those graphs, add exact paths such as
+`node_modules/@rotdrop/nextcloud-vue-components/lib/components/FilePrefixPicker.vue`
+to `.l10nkeep` (override with `L10N_VUE_KEEP`). Blank lines and `#` comments are
+allowed; globs are not. Keep entries prevent generated exclusions but do not
+override handwritten `.l10nignore` exclusions.
+
+`L10N_IGNORE` overrides the ignore file path. The Vue extractor automatically
+receives it when it exists; set `VUE_COMPONENTS_L10N_IGNORE` to override or to
+empty to disable filtering. Regenerate exclusions after changing application
+imports, build configurations, or package versions, then regenerate and commit
+the catalogues. Generation is intentionally not an automatic prerequisite of
+translation extraction; run the two commands sequentially, not as parallel make
+goals. Review generated exclusions before committing.
+
+For PHP, `make toolkit-l10n-ignore-candidates` prints a review-only list of
+toolkit files whose basenames are not mentioned in app PHP/XML/JSON/template
+sources or other toolkit PHP files. Vendor trees and generated catalogue
+directories are skipped. This is a deliberately simple heuristic, not PHP
+reachability analysis: aliases, dynamic references, service discovery, and files
+declaring functions or multiple classes need manual inspection. After the list,
+it prints a commented set diff against toolkit PHP entries in `.l10nignore`
+(or `L10N_IGNORE`): `# +` marks new candidates, and `# -` marks existing
+exclusions no longer suggested, including paths to removed files. Entries are
+compared without leading directories such as `vendor/` or `vendor-scoped/`;
+duplicates, blank lines, comments, and unrelated entries do not affect the diff.
+A missing ignore file is treated as an empty list; other read errors fail.
+The diff is advisory, not a recommendation to undo deliberate manual choices.
+It never writes
+the ignore file and never changes toolkit extraction. Developers must hand-tune
+any PHP exclusions and configure the toolkit's own ignore support separately.
+At present, the upstream toolkit extractor incorrectly recognizes
+`rotdrop/nextcloud-vue-components/src/` rather than its own package prefix; that
+needs fixing upstream before the toolkit paths printed here can be used.
+
 `makefile/setup.mk` also uses the XML-derived suffix for the toolkit's
 PHP-to-TypeScript source directory. Its
 `apply-scoped-autoload-patch` helper accepts the vendor directory as its

@@ -34,8 +34,10 @@ class L10nMakefileTest(unittest.TestCase):
             "import os, pathlib, sys\n"
             f"assert sys.argv[1:4] == ['--no-install', '{VUE_COMPONENTS}', "
             "'extract-l10n-strings']\n"
-            "assert len(sys.argv) == 5\n"
+            "assert len(sys.argv) in (5, 6)\n"
             "assert pathlib.Path.cwd() == pathlib.Path(__file__).parent\n"
+            "if len(sys.argv) == 6:\n"
+            "    pathlib.Path('received-ignore').write_text(sys.argv[5])\n"
             "sys.exit(23) if os.environ.get('FAIL_EXTRACTOR') else None\n"
             "pathlib.Path(sys.argv[4]).write_text('vue-components')\n",
         )
@@ -154,6 +156,68 @@ class L10nMakefileTest(unittest.TestCase):
                 self.assertEqual(destination.read_text(), "vue-components")
                 self.assertFalse((self.output / "toolkit-strings.php").exists())
                 destination.unlink()
+
+    def test_vue_ignore_file_is_passed_when_present(self):
+        self.manifest("package.json", {"dependencies": {VUE_COMPONENTS: "*"}})
+        self.write(".l10nignore", "# exclusions\n")
+        self.make("vue-components-l10n")
+        self.assertEqual((self.app / "received-ignore").read_text(),
+                         str(self.app / ".l10nignore"))
+
+    def test_vue_ignore_override_and_disable(self):
+        self.manifest("package.json", {"dependencies": {VUE_COMPONENTS: "*"}})
+        self.write(".l10nignore", "# exclusions\n")
+        custom = self.app / "ignore list"
+        self.write("ignore list", "")
+        self.make("vue-components-l10n", f"VUE_COMPONENTS_L10N_IGNORE={custom}")
+        received = self.app / "received-ignore"
+        self.assertEqual(received.read_text(), str(custom))
+        received.unlink()
+        self.make("vue-components-l10n", "VUE_COMPONENTS_L10N_IGNORE=")
+        self.assertFalse(received.exists())
+
+    def test_exclusion_targets_skip_undeclared_packages(self):
+        self.make("l10n-ignore", "toolkit-l10n-ignore-candidates")
+        self.assertFalse((self.app / ".l10nignore").exists())
+
+    def test_vue_ignore_target_arguments_and_overrides(self):
+        self.manifest("package.json", {"dependencies": {VUE_COMPONENTS: "*"}})
+        self.write("node", "#!/usr/bin/env python3\n"
+                   "import json, pathlib, sys\n"
+                   "if sys.argv[1] == '-e': print('yes')\n"
+                   "else: pathlib.Path('ignore-args').write_text(json.dumps(sys.argv[1:]))\n")
+        (self.app / "node").chmod(0o755)
+        self.make("l10n-ignore", f"NODE={self.app / 'node'}",
+                  "L10N_VITE_CONFIG=custom config.ts",
+                  f"L10N_IGNORE={self.app / 'custom ignore'}",
+                  f"L10N_VUE_KEEP={self.app / 'keep list'}",
+                  "L10N_VITE_MODES=production")
+        arguments = json.loads((self.app / "ignore-args").read_text())
+        self.assertEqual(Path(arguments[0]).name, "l10n-ignore.mjs")
+        self.assertEqual(arguments[1:], [
+            "vue", str(self.app), "custom config.ts", str(self.app / "custom ignore"),
+            str(self.app / "keep list"), "production",
+        ])
+
+    def test_php_candidate_target_does_not_extract_or_write(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.write(f"vendor/{TOOLKIT}/src/Unused.php", "<?php class Unused {}")
+        result = self.make("toolkit-l10n-ignore-candidates")
+        self.assertIn(f"{TOOLKIT}/src/Unused.php", result.stdout)
+        self.assertFalse((self.app / ".l10nignore").exists())
+        self.assertFalse(self.output.exists())
+
+    def test_php_candidate_diff_uses_ignore_override(self):
+        self.manifest("composer.json", {"require": {TOOLKIT: "*"}})
+        self.write(f"vendor/{TOOLKIT}/src/Unused.php", "<?php class Unused {}")
+        self.write(".l10nignore", f"vendor/{TOOLKIT}/src/Unused.php\n")
+        custom = self.app / "custom ignore"
+        contents = f"vendor-scoped/{TOOLKIT}/src/Removed.php\n"
+        self.write("custom ignore", contents)
+        result = self.make("toolkit-l10n-ignore-candidates", f"L10N_IGNORE={custom}")
+        self.assertIn(f"# - {TOOLKIT}/src/Removed.php", result.stdout)
+        self.assertIn(f"# + {TOOLKIT}/src/Unused.php", result.stdout)
+        self.assertEqual(custom.read_text(), contents)
 
     def test_shared_directory_override_and_parallel_extraction(self):
         self.manifest("composer.json", {"require": {TOOLKIT: "*"}})

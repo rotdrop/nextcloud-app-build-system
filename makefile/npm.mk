@@ -29,7 +29,7 @@ PREV_BUILD_FLAVOUR = $(shell cat $(BUILD_FLAVOUR_FILE) 2> /dev/null || echo)
 #@private
 build-flavour-dev:
 ifneq ($(PREV_BUILD_FLAVOUR), dev)
-	make clean
+	$(MAKE) bundler-clean
 	echo dev > $(BUILD_FLAVOUR_FILE)
 endif
 .PHONY: build-flavour-dev
@@ -37,7 +37,7 @@ endif
 #@private
 build-flavour-build:
 ifneq ($(PREV_BUILD_FLAVOUR), build)
-	make clean
+	$(MAKE) bundler-clean
 	echo build > $(BUILD_FLAVOUR_FILE)
 endif
 .PHONY: build-flavour-build

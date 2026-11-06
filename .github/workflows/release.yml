@@ -26,6 +26,18 @@ on:
         description: Optional script run in the build, see build-appstore.yml
         type: string
         default: ''
+      build-server:
+        description: Build inside a Nextcloud server tree (the app is bind-mounted at <server>/apps/<app id>), for apps whose dev scripts bootstrap Nextcloud
+        type: boolean
+        default: false
+      signing-server-repository:
+        description: Repository providing the Nextcloud server
+        type: string
+        default: nextcloud/server
+      signing-server-ref:
+        description: Branch or tag of the Nextcloud server, e.g. stable35
+        type: string
+        default: master
       environment:
         description: Protected environment holding the signing secrets
         type: string
@@ -87,6 +99,9 @@ jobs:
       apt-packages: ${{ inputs.apt-packages }}
       make-args: ${{ inputs.make-args }}
       verify-script: ${{ inputs.verify-script }}
+      build-server: ${{ inputs.build-server }}
+      signing-server-repository: ${{ inputs.signing-server-repository }}
+      signing-server-ref: ${{ inputs.signing-server-ref }}
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
       APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}

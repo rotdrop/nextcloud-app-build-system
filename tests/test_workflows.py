@@ -109,5 +109,49 @@ class AppstoreUploadTest(unittest.TestCase):
             self.assertEqual(res.returncode, code, res.stdout)
 
 
+ACTION = ROOT / ".github/actions/nextcloud-server/action.yml"
+CI = ROOT / ".github/workflows/ci.yml"
+
+
+class BuildServerTest(unittest.TestCase):
+    def test_build_server_is_opt_in_everywhere(self):
+        for path in (WORKFLOW, CI, RELEASE):
+            text = path.read_text()
+            m = re.search(r"\n      build-server:\n(.*?)\n      [a-z-]+:\n", text, re.S)
+            self.assertIsNotNone(m, path.name)
+            self.assertIn("default: false", m.group(1), path.name)
+
+    def test_build_server_is_passed_down(self):
+        for path in (CI, RELEASE):
+            text = path.read_text()
+            for name in ("build-server", "signing-server-repository", "signing-server-ref"):
+                self.assertIn("%s: ${{ inputs.%s }}" % (name, name), text, path.name)
+
+    def test_build_runs_in_the_mounted_app(self):
+        for path in (WORKFLOW, CI):
+            text = path.read_text()
+            self.assertIn(
+                "working-directory: ${{ inputs.build-server && steps.server.outputs.app-dir || github.workspace }}", text)
+            self.assertIn("if: inputs.build-server", text)
+
+    def test_signing_reuses_the_server(self):
+        text = WORKFLOW.read_text()
+        self.assertIn("if: inputs.build-server || (inputs.release && inputs.sign)", text)
+        self.assertNotIn("/.signing-server", text)
+        self.assertIn("steps.server.outputs.occ", text)
+
+    def test_action_mounts_instead_of_symlinking(self):
+        # console-setup.php uses realpath(), which resolves symlinks
+        text = ACTION.read_text()
+        self.assertIn("mount --bind", text)
+        self.assertNotIn("ln -s", text)
+        self.assertIn('"$server/apps/$app_id"', text)
+
+    def test_nested_references_use_the_tag(self):
+        for path in (WORKFLOW, CI, RELEASE):
+            for ref in re.findall(r"uses: rotdrop/nextcloud-app-build-system/\S+", path.read_text()):
+                self.assertTrue(ref.endswith("@v1"), ref)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Composite action: clone and install a Nextcloud server and make the app
+# checkout appear as <server>/apps/<app id>.
+#
+# Some app scripts (e.g. dev-scripts/php-to-typescript.php via
+# lib/scripts/console-setup.php) bootstrap Nextcloud through
+# <app>/../../lib/base.php after resolving symlinks with realpath(), so a
+# symlink does not work; the app checkout is bind-mounted instead. Run the
+# following steps with working-directory set to the `app-dir` output.
+name: Nextcloud server for the app build
+description: Clone and install a Nextcloud server and bind-mount the app checkout into its apps directory
+
+inputs:
+  repository:
+    description: Server repository
+    default: nextcloud/server
+  ref:
+    description: Branch or tag of the server (a commit SHA does not work with a shallow clone)
+    default: master
+  app-checkout:
+    description: Path of the app checkout
+    default: ${{ github.workspace }}
+  install:
+    description: Run occ maintenance:install, needed for signing and for bootstrapping the server
+    default: 'true'
+
+outputs:
+  server-dir:
+    description: Path of the server tree
+    value: ${{ steps.server.outputs.server-dir }}
+  app-dir:
+    description: Path of the app inside the server tree, use it as working directory
+    value: ${{ steps.server.outputs.app-dir }}
+  occ:
+    description: Path of the occ script
+    value: ${{ steps.server.outputs.server-dir }}/occ
+
+runs:
+  using: composite
+  steps:
+    - name: Set up the Nextcloud server tree
+      id: server
+      shell: bash
+      env:
+        SERVER_REPOSITORY: ${{ inputs.repository }}
+        SERVER_REF: ${{ inputs.ref }}
+        APP_CHECKOUT: ${{ inputs.app-checkout }}
+        INSTALL: ${{ inputs.install }}
+      run: |
+        set -euo pipefail
+        server="$RUNNER_TEMP/nextcloud-server"
+        app_id=$(php -r 'echo (string)simplexml_load_file($argv[1] . "/appinfo/info.xml")->id;' "$APP_CHECKOUT")
+        test -n "$app_id" || { echo "::error::$APP_CHECKOUT/appinfo/info.xml lacks an id"; exit 1; }
+        git clone --quiet --depth 1 --branch "$SERVER_REF" --recurse-submodules --shallow-submodules \
+          "https://github.com/$SERVER_REPOSITORY.git" "$server"
+        cd "$server"
+        composer install --no-interaction --no-progress
+        if [ "$INSTALL" = true ]; then
+          php occ maintenance:install --database=sqlite \
+            --admin-user=admin --admin-pass=admin --no-interaction
+        fi
+        mkdir -p "$server/apps/$app_id"
+        sudo mount --bind "$APP_CHECKOUT" "$server/apps/$app_id"
+        echo "server-dir=$server" >> "$GITHUB_OUTPUT"
+        echo "app-dir=$server/apps/$app_id" >> "$GITHUB_OUTPUT"

@@ -243,8 +243,31 @@ Common inputs: `php-version`, `node-version`, `apt-packages`, `make-args`
 and `verify-script` (a script relative to the app root, run after the build
 with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has
 further inputs for the PHP extensions, `release`, `environment` and the
-signing server. `release.yml` can optionally publish to the app store
-(`publish-to-appstore`, default off).
+signing server.
+
+### Opting out of signing and app store upload
+
+Apps not (yet) in the Nextcloud app store can opt out in `release.yml`:
+
+```yaml
+    with:
+      sign: false                # unsigned tarball, no server checkout, no keys
+      upload-to-appstore: false  # never push to the app store
+```
+
+- `sign` (default `true`): with `false` the archive is built unsigned and still
+  attached to the GitHub release (tag pattern rules for pre-releases stay), and
+  nothing is uploaded. With `true` the secrets `APP_PRIVATE_KEY` and
+  `APP_PUBLIC_CRT` are required and the release fails if they are missing.
+- `upload-to-appstore` (default `true`): uploads stable releases only. It is
+  skipped for pre-releases (version contains `-`), unsigned builds and, with a
+  notice, if the `APPSTORE_TOKEN` secret is absent. This replaces the former
+  opt-in `publish-to-appstore` input.
+- `build-appstore.yml` has the same `sign` input, effective with `release: true`.
+  Without `release`, archives are always unsigned.
+- Locally: `make appstore APPSTORE_SIGN=0` builds an unsigned archive and
+  ignores keys in `~/.nextcloud/certificates`; it needs no `occ`. Without keys
+  signing is skipped with a message anyway.
 
 Versioning: reference the workflows by the floating major tag `@v1` (or an
 exact tag). The nested calls (`ci` and `release` call `build-appstore`) use

@@ -187,6 +187,27 @@ class SnapshotTest(AppMakefileTestCase):
         self.assert_snapshot("generic-hooks", out)
 
 
+class SigningTest(AppMakefileTestCase):
+    def appstore(self, *arguments):
+        env = {**self.env, "APP_PRIVATE_KEY": "key", "APP_PUBLIC_CRT": "crt"}
+        # Fake tools: the recorded php/openssl calls show whether signing ran.
+        return self.make("appstore", "MAKE=true", "COMPOSER=true", "RSYNC=true",
+                         "PHP=echo", "OPENSSL=echo", *arguments, env=env)
+
+    def test_signing_is_the_default(self):
+        out = self.appstore().stdout
+        self.assertIn("integrity:sign-app", out)
+        self.assertTrue((self.app / "build/tools/certificates/fixtureapp.key").exists())
+
+    def test_unsigned_build_ignores_keys(self):
+        out = self.appstore("APPSTORE_SIGN=0").stdout
+        self.assertNotIn("integrity:sign-app", out)
+        self.assertNotIn("Signing", out)
+        self.assertFalse((self.app / "build/tools/certificates").exists() and
+                         any((self.app / "build/tools/certificates").iterdir()))
+        self.assertTrue(list((self.app / "build/artifacts/appstore").glob("*.tar.gz")))
+
+
 class VariableTest(AppMakefileTestCase):
     def test_default_goal_is_help(self):
         self.assertEqual(self.make().stdout.strip(), "help")

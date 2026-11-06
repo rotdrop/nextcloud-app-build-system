@@ -24,6 +24,7 @@
 #   APPSTORE_FILES_EXTRA    further files copied to the archive
 #   APPSTORE_COPY_HOOK      make target(s) run after copying and before signing,
 #                           the signing directory is $(APPSTORE_SIGN_DIR)/$(APP_NAME)
+#   APPSTORE_SIGN           0: do not sign files and archive (default: 1)
 #   APPSTORE_COMPOSER_ARGS  composer arguments run before packaging (default: update --no-dev)
 #   JS_FILES_EXTRA          further files the bundler build depends on
 #   TS_PHP_SOURCE_DIRS      PHP sources for the TypeScript type generation
@@ -146,6 +147,8 @@ APPSTORE_FILES_EXTRA ?=
 APPSTORE_BLACKLISTED ?= .htaccess .git* .*keep *~
 
 APPSTORE_COMPOSER_ARGS ?= update --no-dev
+# 0: build an unsigned archive, ignoring keys and certificates and not needing occ
+APPSTORE_SIGN ?= 1
 APPSTORE_COPY_HOOK ?=
 
 ###############################################################################
@@ -286,7 +289,8 @@ appstore:
 	$(RSYNC) -a -L $(APPSTORE_BLACKLISTED:%=--exclude '%') $(APPSTORE_FILES) $(wildcard $(APPSTORE_FILES_OPTIONAL)) $(APPSTORE_FILES_EXTRA) $(APPSTORE_SIGN_DIR)/$(APP_NAME)
 	$(if $(strip $(APPSTORE_COPY_HOOK)),$(MAKE) $(APPSTORE_COPY_HOOK))
 	mkdir -p $(BUILD_CERT_DIR)
-	$(SILENT)umask 077;\
+	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
+umask 077;\
 if [ -n "$$APP_PRIVATE_KEY" ]; then\
   echo "$$APP_PRIVATE_KEY" > $(BUILD_CERT_DIR)/$(APP_NAME).key;\
 elif [ -f "$(CERT_DIR)/$(APP_NAME).key" ]; then\
@@ -295,12 +299,14 @@ fi;\
 if [ -n "$$APP_PUBLIC_CRT" ]; then\
   echo "$$APP_PUBLIC_CRT" > $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
 fi
-	$(SILENT)if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ ! -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
+if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ ! -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
   curl -L -o $(BUILD_CERT_DIR)/$(APP_NAME).crt\
  "https://github.com/nextcloud/app-certificate-requests/raw/master/$(APP_NAME)/$(APP_NAME).crt";\
   $(OPENSSL) x509 -in $(BUILD_CERT_DIR)/$(APP_NAME).crt -noout -text > /dev/null 2>&1 || rm -f $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
 fi
-	$(SILENT)if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
+if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
   echo "Signing app files ...";\
   $(PHP) $(OCC) integrity:sign-app\
  --privateKey=$(ABSSRCDIR)/$(BUILD_CERT_DIR)/$(APP_NAME).key\
@@ -311,7 +317,8 @@ else\
   echo 'Cannot sign app-files, certificate "$(BUILD_CERT_DIR)/$(APP_NAME).crt" or private key "$(BUILD_CERT_DIR)/$(APP_NAME).key" not available.' 1>&2;\
 fi
 	tar -c$(APPSTORE_COMPRESSION)f $(APPSTORE_PACKAGE_FILE) -C $(APPSTORE_SIGN_DIR) $(APP_NAME)
-	$(SILENT)if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
+if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
   echo "Signing package ...";\
   $(OPENSSL) dgst -sha512 -sign $(BUILD_CERT_DIR)/$(APP_NAME).key -out $(APPSTORE_PACKAGE_FILE).sig $(APPSTORE_PACKAGE_FILE);\
   $(OPENSSL) base64 -in $(APPSTORE_PACKAGE_FILE).sig;\

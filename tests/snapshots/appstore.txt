@@ -2,7 +2,7 @@ true clean
 true build
 composer update --no-dev
 mkdir -p ./build/artifacts/appstore/sign/fixtureapp
-rsync -a -L --exclude '.htaccess' --exclude '.git*' --exclude '.*keep' --exclude '*~' appinfo css js img l10n templates lib vendor vendor-scoped composer CHANGELOG.md COPYING README.md  ./build/artifacts/appstore/sign/fixtureapp
+rsync -a -L --exclude '.htaccess' --exclude '.git*' --exclude '.*keep' --exclude '*~' appinfo css js img l10n lib vendor vendor-scoped composer CHANGELOG.md COPYING README.md   ./build/artifacts/appstore/sign/fixtureapp
 mkdir -p ./build/tools/certificates
 umask 077;\
 if [ -n "$APP_PRIVATE_KEY" ]; then\

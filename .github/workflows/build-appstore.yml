@@ -1,0 +1,256 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Reusable workflow: build the app-store archive of a Nextcloud app which
+# uses the shared makefile/app.mk (`make appstore`), check it, optionally
+# sign it, and upload it as a workflow artifact. Publishing (GitHub release,
+# app-store upload) and app-specific tests stay in the consuming repository.
+#
+# Pin the workflow to the same release tag or commit as the app's
+# dev-scripts/lib submodule, see README.md.
+name: Build app archive
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: App id as in appinfo/info.xml, e.g. files_archive
+        type: string
+        required: true
+      php-version:
+        type: string
+        default: '8.5'
+      php-extensions:
+        type: string
+        default: ctype, curl, dom, fileinfo, gd, iconv, intl, mbstring, openssl, pdo_sqlite, posix, sqlite3, xml, zip, apcu, bcmath, gmp, imagick
+      node-version:
+        type: string
+        default: '24'
+      apt-packages:
+        description: Additional space separated apt packages (xpath and rsync are always installed)
+        type: string
+        default: ''
+      nextcloud-server:
+        description: >-
+          Build inside a Nextcloud server tree (server/apps/<app-name>) with an
+          installed instance; needed for the PHP-to-TypeScript generation and for signing
+        type: boolean
+        default: true
+      nextcloud-repository:
+        type: string
+        default: rotdrop/nextcloud-server
+      nextcloud-ref:
+        type: string
+        default: cjh-stable35
+      make-target:
+        type: string
+        default: appstore
+      make-args:
+        description: Additional arguments for make, e.g. `FOO=bar`
+        type: string
+        default: ''
+      build-attempts:
+        description: Attempts for the make invocation; failed attempts are only repeated after transient HTTP 502/503/504 errors
+        type: number
+        default: 1
+      required-js-entries:
+        description: >-
+          Space separated entry names; the archive must contain
+          js/[<app-name>-]<entry>-<hash>.js for each of them. It must always contain some JavaScript.
+        type: string
+        default: ''
+      release:
+        description: Sign and verify the archive in the protected release environment
+        type: boolean
+        default: false
+      release-environment:
+        description: Environment holding the signing secrets, used if release is true
+        type: string
+        default: release
+    secrets:
+      APP_PRIVATE_KEY:
+        description: PEM private key of the app signing certificate, required if release is true
+        required: false
+      APP_PUBLIC_CRT:
+        description: PEM app signing certificate, required if release is true
+        required: false
+    outputs:
+      version:
+        description: The app version read from appinfo/info.xml
+        value: ${{ jobs.build.outputs.version }}
+      artifact:
+        description: Name of the uploaded artifact, <app-name>-<version>
+        value: ${{ jobs.build.outputs.artifact }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.release && inputs.release-environment || '' }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ${{ inputs.nextcloud-server && format('server/apps/{0}', inputs.app-name) || '.' }}
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact: ${{ inputs.app-name }}-${{ steps.meta.outputs.version }}
+    env:
+      APP_NAME: ${{ inputs.app-name }}
+      COMPOSER_NO_INTERACTION: '1'
+    steps:
+      - name: Validate inputs
+        working-directory: .
+        env:
+          RELEASE: ${{ inputs.release }}
+          SERVER: ${{ inputs.nextcloud-server }}
+        run: |
+          [[ "$APP_NAME" =~ ^[a-z0-9_]+$ ]] || { echo "::error::Invalid app-name"; exit 1; }
+          if [ "$RELEASE" = true ] && [ "$SERVER" != true ]; then
+            echo "::error::Signing needs occ, set nextcloud-server for release builds"; exit 1
+          fi
+
+      - name: Use HTTPS for submodules
+        working-directory: .
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Checkout Nextcloud
+        if: inputs.nextcloud-server
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.nextcloud-repository }}
+          ref: ${{ inputs.nextcloud-ref }}
+          submodules: recursive
+          path: server
+          persist-credentials: false
+
+      - name: Checkout app
+        uses: actions/checkout@v5
+        with:
+          path: ${{ inputs.nextcloud-server && format('server/apps/{0}', inputs.app-name) || '.' }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install build utilities
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml-xpath-perl rsync $APT_PACKAGES
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: ${{ inputs.php-extensions }}
+          tools: composer:v2
+          coverage: none
+          ini-values: apc.enable_cli=1, memory_limit=1G
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Nextcloud
+        if: inputs.nextcloud-server
+        working-directory: server
+        run: |
+          composer install --no-interaction --no-progress
+          php occ maintenance:install --database=sqlite \
+            --admin-user=admin --admin-pass=admin --no-interaction
+
+      - name: Read app version
+        id: meta
+        run: |
+          version=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->version;')
+          [ -n "$version" ] || { echo "::error::No version in appinfo/info.xml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build app archive
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          MAKE_TARGET: ${{ inputs.make-target }}
+          MAKE_ARGS: ${{ inputs.make-args }}
+          ATTEMPTS: ${{ inputs.build-attempts }}
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
+        run: |
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            log="$RUNNER_TEMP/build-$attempt.log"
+            set +e
+            make "$MAKE_TARGET" APP_VERSION="$VERSION" $MAKE_ARGS 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+            [ "$status" -ne 0 ] || exit 0
+            if [ "$attempt" -ge "$ATTEMPTS" ] || ! grep -Eq '502 Bad Gateway|503 Service Unavailable|504 Gateway Time-out|HTTP 50[234]' "$log"; then
+              exit "$status"
+            fi
+            echo "Transient upstream gateway error; retrying build ($attempt/$ATTEMPTS) ..."
+            sleep "$((attempt * 10))"
+          done
+
+      - name: Sanity-check the archive
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          ENTRIES: ${{ inputs.required-js-entries }}
+        run: |
+          archive="build/artifacts/appstore/$APP_NAME-$VERSION.tar.gz"
+          test -s "$archive"
+          tar tzf "$archive" > "$RUNNER_TEMP/files.txt"
+          count=$(grep -Ec "^$APP_NAME/js/.*\.m?js$" "$RUNNER_TEMP/files.txt" || true)
+          echo "JS bundles in archive: $count"
+          test "$count" -gt 0 || { echo "::error::No JS bundles in the archive"; exit 1; }
+          for entry in $ENTRIES; do
+            grep -Eq "^$APP_NAME/js/($APP_NAME-)?$entry-[^/]+\.m?js$" "$RUNNER_TEMP/files.txt" \
+              || { echo "::error::Missing $entry entry bundle"; exit 1; }
+          done
+
+      - name: Sign and verify release archive
+        if: inputs.release
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_PRIVATE_KEY" || { echo "::error::APP_PRIVATE_KEY is missing"; exit 1; }
+          test -n "$APP_PUBLIC_CRT" || { echo "::error::APP_PUBLIC_CRT is missing"; exit 1; }
+          signing_dir=$(mktemp -d "$RUNNER_TEMP/signing.XXXXXX")
+          trap 'rm -f "$signing_dir/app.key" "$signing_dir/app.crt" "$signing_dir/public.pem"; rmdir "$signing_dir"' EXIT
+          umask 077
+          printf '%s\n' "$APP_PRIVATE_KEY" > "$signing_dir/app.key"
+          printf '%s\n' "$APP_PUBLIC_CRT" > "$signing_dir/app.crt"
+          unset APP_PRIVATE_KEY APP_PUBLIC_CRT
+          openssl x509 -in "$signing_dir/app.crt" -checkend 0 -noout
+          openssl x509 -in "$signing_dir/app.crt" -pubkey -noout > "$signing_dir/public.pem"
+          sign_dir="$PWD/build/artifacts/appstore/sign/$APP_NAME"
+          php ../../occ integrity:sign-app \
+            --privateKey="$signing_dir/app.key" \
+            --certificate="$signing_dir/app.crt" \
+            --path="$sign_dir"
+          test -s "$sign_dir/appinfo/signature.json"
+          php ../../occ integrity:check-app --path="$sign_dir" "$APP_NAME"
+          archive="build/artifacts/appstore/$APP_NAME-$VERSION.tar.gz"
+          tar -czf "$archive" -C build/artifacts/appstore/sign "$APP_NAME"
+          openssl dgst -sha512 -sign "$signing_dir/app.key" -out "$archive.sig" "$archive"
+          openssl dgst -sha512 -verify "$signing_dir/public.pem" -signature "$archive.sig" "$archive"
+
+      - name: Collect artifact files
+        id: collect
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp "build/artifacts/appstore/$APP_NAME-$VERSION.tar.gz" dist/
+          if [ -f "build/artifacts/appstore/$APP_NAME-$VERSION.tar.gz.sig" ]; then
+            cp "build/artifacts/appstore/$APP_NAME-$VERSION.tar.gz.sig" dist/
+          fi
+          (cd dist && sha256sum "$APP_NAME-$VERSION.tar.gz" > "$APP_NAME-$VERSION.tar.gz.sha256")
+          echo "dir=$PWD/dist" >> "$GITHUB_OUTPUT"
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.app-name }}-${{ steps.meta.outputs.version }}
+          path: ${{ steps.collect.outputs.dir }}/*
+          if-no-files-found: error

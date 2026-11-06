@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Reusable workflow: common, fast checks of a Nextcloud app using the shared
+# makefile/app.mk: eslint, `php -l` for several PHP versions, and an
+# idempotency check of `make realclean` on a bare checkout. App-specific tests
+# stay in the consuming repository. Pin the workflow like build-appstore.yml.
+name: Common checks
+
+on:
+  workflow_call:
+    inputs:
+      php-versions:
+        description: JSON array of PHP versions for the lint matrix
+        type: string
+        default: '["8.4", "8.5"]'
+      php-lint-paths:
+        description: Space separated paths scanned for PHP files
+        type: string
+        default: lib appinfo templates composer
+      node-version:
+        type: string
+        default: '24'
+      run-eslint:
+        type: boolean
+        default: true
+      eslint-command:
+        description: Command run after `npm install`
+        type: string
+        default: npm run lint
+      check-realclean:
+        description: Check that `make realclean` works on a bare checkout, twice, and leaves it clean
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    name: php-lint (${{ matrix.php-version }})
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+      - name: Lint PHP files
+        env:
+          PATHS: ${{ inputs.php-lint-paths }}
+        run: |
+          paths=()
+          for path in $PATHS; do [ -e "$path" ] && paths+=("$path"); done
+          find "${paths[@]}" -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+  eslint:
+    if: inputs.run-eslint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Install dependencies
+        run: npm install
+      - name: Run eslint
+        env:
+          ESLINT_COMMAND: ${{ inputs.eslint-command }}
+        run: $ESLINT_COMMAND
+
+  realclean:
+    if: inputs.check-realclean
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use HTTPS for submodules
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install xpath
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml-xpath-perl
+      - name: Make realclean on a bare checkout
+        run: make realclean
+      - name: Make realclean again
+        run: make realclean
+      - name: Verify nothing changed
+        run: test -z "$(git status --porcelain --ignored)" || { git status --porcelain --ignored; exit 1; }

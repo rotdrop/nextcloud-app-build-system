@@ -8,7 +8,7 @@ ifeq ($(SCSS_VARIABLES_DIR),)
 SCSS_VARIABLES_DIR := $(ABSBUILDDIR)/scss-variables
 endif
 
-TS_APP_CONFIG_IN = $(ABSSRCDIR)/dev-scripts/lib/templates/app-config.ts.in
+TS_APP_CONFIG_IN = $(DEV_LIB_DIR)/templates/app-config.ts.in
 TS_APP_CONFIG = $(TS_TYPES_DIR)/app-config.ts
 SCSS_APP_CONFIG = $(SCSS_VARIABLES_DIR)/app-config.scss
 

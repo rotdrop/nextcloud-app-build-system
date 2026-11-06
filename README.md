@@ -67,6 +67,187 @@ repositories:
 | pdf_downloader | [rotdrop/nextcloud-app-pdf-downloader](https://github.com/rotdrop/nextcloud-app-pdf-downloader) |
 | redaxo | [rotdrop/nextcloud-app-redaxo](https://github.com/rotdrop/nextcloud-app-redaxo) |
 
+## Shared app Makefile: `makefile/app.mk`
+
+`app.mk` bundles the build rules common to bav, dokuwiki, files_archive,
+mail_roundcube, pdf_downloader and redaxo: `setup.mk`, `composer.mk`,
+`namespace-wrapper.mk`, `l10n.mk`, the TypeScript generators, `npm.mk`,
+MakeHelp, and the targets `build`, `dev`, `build-no-dev`, `dev-setup`,
+`l10n`, `phpcs`, `phpmd`, `appstore`, `clean`, `distclean`, `mostlyclean`,
+`realclean`, `downloadsclean`, `test`, `unit-tests`, `integration-tests`
+and `tide`. The Makefile of the application keeps its own configuration
+and app-specific rules:
+
+```makefile
+SRCDIR = .
+ABSSRCDIR = $(CURDIR)
+DEV_LIB_DIR = $(ABSSRCDIR)/dev-scripts/lib
+
+# 1. optional configuration, see the table below
+TS_PHP_SOURCE_DIRS = lib
+SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev
+
+include $(DEV_LIB_DIR)/makefile/app.mk
+
+# 2. extensions and app-specific rules
+dev-setup: my-generated-sources
+include $(DEV_LIB_DIR)/makefile/optional/some-app-fragment.mk
+```
+
+Requirements: `dev-scripts/lib` (this repository) and `dev-scripts/MakeHelp`
+submodules, `appinfo/info.xml` with `<id>`, `<version>`, `<namespace>` and
+`<scopednamespace>`, `composer-<scopednamespace>.json`, `scoper.inc.php`,
+`xpath`, PHP, npm and Composer (or `build/tools/composer.phar` via
+`make composer-download`). `DEV_LIB_DIR` must be set before the include (needed to
+find `app.mk`); `SRCDIR` and `ABSSRCDIR` default to `.` and `$(CURDIR)`.
+
+Variables are set **before** the include; all of them default with `?=`, so
+the command line and the environment win. Defaults of `setup.mk`
+(`BUILDDIR`, `TS_PHP_SOURCE_DIRS`, `TYPESCRIPT_CONVERTER`, ...) also became
+`?=`, so they can now be set before the include as well; assignments after the
+include keep working.
+
+| Variable | Default / meaning |
+| --- | --- |
+| `SCOPED_COMPOSER_UPDATE_OPTIONS`, `SCOPED_VENDOR_LINK_DIRS`, `WRAPPER_GIT_DEPENDENCIES` | As in `namespace-wrapper.mk`; apps using `--no-dev` for the scoped tree set the first one. |
+| `TS_PHP_SOURCE_DIRS` | `lib` and the scoped toolkit sources (`setup.mk`). |
+| `BUNDLER_CONFIG` | `vite.config.ts`. |
+| `APP_BUNDLER_DEPS` | Extra prerequisites of the bundler build, added to `L10N_FILES`, `JS_FILES` (`src/`), `IMG_FILES` (`img/*.svg`), the generated app config and `ts-types-files`. |
+| `APP_TS_NOTIFICATION_API` | Non-empty: include `ts-notification-api.mk` and make the bundler depend on `$(TS_NOTIFICATION_API)`. |
+| `DEV_SETUP_DEPS` | Extra prerequisites of `dev-setup` (after `composer namespace-wrapper`); `dev-setup: foo` after the include works as well. |
+| `L10N_VITE_CONFIG` | `vite.l10n.config.ts`; set it empty for apps without one. |
+| `L10N_IGNORE_DEPS` | Extra prerequisites of `vue-components-l10n-ignore`, e.g. `ts-app-config ts-types-files`. |
+| `PHPCS`, `PHPMD`, `PHPUNIT`, `PHP_SCOPER` | `vendor-bin/<tool>/vendor/bin/<tool>` below `ABSSRCDIR`. |
+| `PHP_QA_DIRS`, `PHPCS_ARGS`, `PHPMD_ARGS` | `lib appinfo templates` and the complete argument lists of the two tools. |
+| `RSYNC`, `PHP`, `NPM`, `OPENSSL`, `EMACS`, `WGET`, `COMPOSER`, `COMPOSER_OPTIONS` | Found in `PATH`; `COMPOSER_OPTIONS` defaults to `--prefer-dist`. `APP_REQUIRE_WGET` (non-empty) makes a missing `WGET` an error. |
+| `APPSTORE_FILES_EXTRA` | Added to the default `APPSTORE_FILES` (`appinfo css js img l10n lib templates composer vendor $(SCOPED_VENDOR_DIR) CHANGELOG.md COPYING README.md`). Entries which do not exist are skipped. Override `APPSTORE_FILES` to replace the list. |
+| `APPSTORE_BLACKLISTED`, `APPSTORE_COMPRESSION`, `APPSTORE_VERSION` | Excluded patterns, `z` or `J`, and `$(VERSION)` or else `$(APP_VERSION)`. |
+| `APPSTORE_COMPOSER_COMMAND` | `$(COMPOSER) update --no-dev`, run after the build to strip development packages. |
+| `APPSTORE_BUILD_TARGETS` | `build`, run after `make clean`. |
+| `TIDE_ENTRY` | `src/vue-app.ts`, used by `make tide`. |
+| `CLEAN_EXTRA`, `DISTCLEAN_EXTRA`, `MOSTLYCLEAN_EXTRA`, `REALCLEAN_EXTRA` | Space-separated paths removed by the respective target; extend with `+=` after the include. |
+
+Hooks: `appstore-stage::` (double colon, runs after copying `APPSTORE_FILES`
+into the signing directory and before signing/tarring) lets an app add files
+to the archive. Extra recipes for other targets can be attached with
+additional prerequisites. `make appstore` runs `make clean`, `make build`
+(`build-flavour-build`, `dev-setup`, `npm-build` as separate sub-makes),
+`APPSTORE_COMPOSER_COMMAND` and then `appstore-package`, which stages, signs
+(`APP_PRIVATE_KEY`, optional `APP_PUBLIC_CRT`, or `~/.nextcloud/certificates`) and
+packages. Wrapping the include in `ifneq ($(MAKECMDGOALS),release)` (dokuwiki) remains
+possible.
+
+App-specific rules (e.g. `release`, `phpcs-errors`, unusual source generators)
+and tests stay in the app. The pdf_downloader DejaVu/TCPDF font handling is an
+optional fragment, `makefile/optional/pdf-downloader-fonts.mk`, included after
+`app.mk` (it adds `build-fonts` and the fonts list to `dev-setup`, extends
+`MOSTLYCLEAN_EXTRA`, and ships the toolkit config and fonts list through
+`appstore-stage::`). Other apps do not need it and do not need `wget`.
+
+Behaviour of the unified rules: `distclean` removes nested `node_modules`,
+`mostlyclean` always removes `patches.lock.json` files, `.vite`
+and the build flavour file; the signing step uses the key of the build
+certificate directory for the package signature.
+
+## Reusable GitHub Actions workflows
+
+Both workflows are called with `workflow_call`:
+
+```yaml
+jobs:
+  build:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@<ref>
+    with:
+      app-name: files_archive
+```
+
+### Pinning the shared version
+
+The apps pin the Makefile rules by the commit of their `dev-scripts/lib`
+submodule. Reference the workflows with a full commit SHA or an
+immutable release tag (`@v1.2.3`; there is no such tag before this repository
+is tagged) of **the same revision as the submodule**, so Makefile and CI can
+never drift apart. Do not use `@main` for release builds. Update both
+together: `make dev-lib-sync`, then change the `@<ref>`. Dependabot's
+`github-actions` ecosystem can update a SHA/tag pin of reusable workflows.
+
+### `build-appstore.yml`
+
+Builds `make appstore`, checks the archive, optionally signs it and uploads
+the artifact `<app-name>-<version>` (tarball, `.sha256`, and with `release`
+the `.sig`). Publishing is done by the caller, which downloads the artifact.
+Required: `app-name`. Optional inputs (default): `php-version` (`8.5`),
+`php-extensions` (the common Nextcloud set), `node-version` (`24`),
+`apt-packages` (`''`; `libxml-xpath-perl rsync` are always installed),
+`nextcloud-server` (`true`: build in `server/apps/<app-name>` of a server
+checkout with an installed instance, needed by the PHP-to-TypeScript
+generator; `false` builds in the app checkout), `nextcloud-repository`
+(`rotdrop/nextcloud-server`), `nextcloud-ref` (`cjh-stable35`), `make-target`
+(`appstore`), `make-args` (`''`), `build-attempts` (`1`; retries only after
+transient HTTP 502/503/504 errors), `required-js-entries` (`''`, space
+separated entry names that must be in `js/` of the archive), `release`
+(`false`) and `release-environment` (`release`).
+
+With `release: true` the job runs in the environment `release-environment`,
+requires `nextcloud-server: true`, and signs and verifies the archive with the
+secrets `APP_PRIVATE_KEY` and `APP_PUBLIC_CRT` (PEM). These are optional in the
+schema but required for release builds; callers pass them with
+`secrets: inherit` or explicitly. Outputs: `version` and `artifact`. The
+job's `COMPOSER_AUTH` uses the workflow `github.token`, no further secret. The
+caller needs `contents: read`.
+
+### `ci-checks.yml`
+
+Inputs: `php-versions` (JSON array, `["8.4", "8.5"]`), `php-lint-paths`
+(`lib appinfo templates composer`), `node-version` (`24`), `run-eslint`
+(`true`), `eslint-command` (`npm run lint`) and `check-realclean` (`true`:
+`make realclean` twice on a bare checkout leaves nothing behind). No secrets.
+
+### Example caller
+
+```yaml
+name: CI
+on: { pull_request: {}, push: { branches: [main] }, workflow_dispatch: {} }
+permissions: { contents: read }
+jobs:
+  checks:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/ci-checks.yml@<sha>
+  build:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@<sha>
+    with: { app-name: dokuwiki, required-js-entries: admin-settings app refresh }
+  app-tests:            # stays in the app
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with: { name: "${{ needs.build.outputs.artifact }}" }
+```
+
+A release workflow of the app calls `build-appstore.yml` with `release: true`
+and `secrets: inherit`, then does its own validation, GitHub release and
+app-store upload.
+
+### Migration notes for the six apps
+
+Common: replace the Makefile body by the `app.mk` include, keep app-specific
+rules, rename `WEBPACK_DEPS` to `APP_BUNDLER_DEPS`, update the
+`dev-scripts/lib` submodule, and replace the duplicated build workflow by a
+call of `build-appstore.yml` pinned to the same commit.
+
+| App | Makefile settings and notes | `build-appstore.yml` / `ci-checks.yml` |
+| --- | --- | --- |
+| bav | `TS_PHP_SOURCE_DIRS = lib`, `SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev`, `APPSTORE_COMPOSER_COMMAND = $(COMPOSER) install $(COMPOSER_OPTIONS) --no-dev --no-plugins`; `VERSION=` is still accepted. | `nextcloud-server: false`, `apt-packages: jq`, its PHP extension list; the package verification script becomes a job downloading the artifact. |
+| dokuwiki | `SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev`, `L10N_VITE_CONFIG =`, `DEV_SETUP_DEPS = ts-app-config`, own `PHPCS_ARGS`/`PHPMD_ARGS` (`--runtime-set ignore_warnings_on_exit 1`, `--format text --ruleset ...`); keep the `release` target and its `MAKECMDGOALS` guard. | Its former `build-appstore.yml` is replaced; `required-js-entries: admin-settings app refresh`; `release.yml` keeps validation and publishing and calls with `release: true`, `secrets: inherit`. |
+| files_archive | `APP_TS_NOTIFICATION_API = 1`, `APPSTORE_FILES_EXTRA = config`, `L10N_IGNORE_DEPS = ts-app-config ts-types-files ts-notification-api`, `APP_BUNDLER_DEPS` for the extra Vue-components sources, remove the local `l10n` rule. | `nextcloud-server: false`, `php-version: 8.4`; `release.yml` stays. |
+| mail_roundcube | `SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev`, `L10N_IGNORE_DEPS = ts-app-config ts-types-files`, keep `phpcs-errors`; `l10n: app-toolkit` replaces its `vendor-scoped/autoload.php` prerequisite. | `app-name: mail_roundcube`. |
+| pdf_downloader | `include .../optional/pdf-downloader-fonts.mk` after `app.mk`; `PHPCS`/`PHPMD` point to `vendor/bin/...`; `APP_TS_NOTIFICATION_API = 1`; remove the local font rules, `FONTS_LIST_FILE`, and the font entries of the clean targets. | `app-name: pdf_downloader`; the "realclean after full build" job stays in the app (the bare-checkout check moves to `ci-checks.yml`). |
+| redaxo | `SCOPED_COMPOSER_UPDATE_OPTIONS = --no-dev`, `DEV_SETUP_DEPS = ts-app-config`, `APP_TS_NOTIFICATION_API = 1`, `L10N_IGNORE_DEPS = ts-app-config ts-types-files ts-notification-api`, own `PHPCS_ARGS`/`PHPMD_ARGS`. | `build-attempts: 3`. |
+
+Notes: all apps get `build-no-dev`, `l10n`, `tide`; the `appstore` target is
+now the same sub-make sequence everywhere; `rm -rf` lists are the union of the
+former ones. The shared `setup.mk` now locates `templates/app-config.ts.in` via
+`DEV_LIB_DIR` instead of the fixed `dev-scripts/lib` path.
+
 ## Scoped Composer configuration
 
 Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for

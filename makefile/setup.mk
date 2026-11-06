@@ -10,15 +10,15 @@ APP_VERSION := $(shell $(XPATH) -q -e '/info/version/text()' $(APP_INFO))
 APP_NAMESPACE := $(shell $(XPATH) -q -e '/info/namespace/text()' $(APP_INFO))
 CLOUD_MAX_VERSION := $(shell $(XPATH) -q -e 'string(/info/dependencies/nextcloud/@max-version)' $(APP_INFO))
 
-BUILDDIR = ./build
-ABSBUILDDIR = $(ABSSRCDIR)/build
-BUILD_TOOLS_DIR = $(BUILDDIR)/tools
-DOWNLOADS_DIR = ./downloads
-CONFIG_DIR = ./config
-TYPESCRIPT_CONVERTER = $(ABSSRCDIR)/dev-scripts/php-to-typescript.php
-TS_TYPES_DIR = $(ABSBUILDDIR)/ts-types
-TS_PHP_SOURCE_DIRS = lib vendor-$(SCOPED_VENDOR_SUFFIX)/rotdrop/nextcloud-app-toolkit/src
-WRAPPER_NAMESPACE_POSTFIX = $(SCOPED_NAMESPACE_POSTFIX)
+BUILDDIR ?= ./build
+ABSBUILDDIR ?= $(ABSSRCDIR)/build
+BUILD_TOOLS_DIR ?= $(BUILDDIR)/tools
+DOWNLOADS_DIR ?= ./downloads
+CONFIG_DIR ?= ./config
+TYPESCRIPT_CONVERTER ?= $(ABSSRCDIR)/dev-scripts/php-to-typescript.php
+TS_TYPES_DIR ?= $(ABSBUILDDIR)/ts-types
+TS_PHP_SOURCE_DIRS ?= lib vendor-$(SCOPED_VENDOR_SUFFIX)/rotdrop/nextcloud-app-toolkit/src
+WRAPPER_NAMESPACE_POSTFIX ?= $(SCOPED_NAMESPACE_POSTFIX)
 
 # Composer identifies "files" autoloads by a hash of package and file
 # name. Namespaced copies of a package in different apps would thus

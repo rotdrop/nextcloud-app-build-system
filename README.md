@@ -325,7 +325,12 @@ action `.github/actions/nextcloud-server` clones it shallowly into
 bind-mounts the app checkout at `<server>/apps/<app id>` (a symlink does not
 work because the script resolves it with `realpath()`). `make appstore`, and
 in `ci` also the `realclean` job (whose `make build` generates the types too),
-run in that directory. The artifacts are written to the app checkout as usual.
+run in that directory. The app is not enabled in that server, so
+`scripts/console-setup.php` registers the app's PSR-4 namespace (from
+`appinfo/info.xml`) with the server's autoloader; without it the app's classes
+are not found ("Class ... does not exist"). This is a no-op for enabled apps.
+Apps must therefore update their `dev-scripts/lib` submodule.
+The artifacts are written to the app checkout as usual.
 Signing reuses the same server. The default is `false` and then nothing
 changes. The action needs the `v1` tag to contain it, so it is not usable
 from a branch before the tag is moved.

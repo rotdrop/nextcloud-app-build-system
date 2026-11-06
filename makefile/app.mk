@@ -29,7 +29,8 @@
 #   TS_PHP_SOURCE_DIRS      PHP sources for the TypeScript type generation
 #   L10N_VITE_CONFIG        Vite config used for the l10n ignore analysis
 #   BUNDLER_CONFIG          bundler configuration file (default: vite.config.ts)
-#   RELEASE_SCRIPT          script run by "make release"
+#   RELEASE_SCRIPT          script run by "make release" (default: dev-scripts/release.sh
+#                           of the app if present, else scripts/release.sh of this repo)
 #
 # The version is APP_VERSION, taken from appinfo/info.xml and
 # overridable on the command line. VERSION given on the command line is
@@ -43,9 +44,10 @@ SILENT ?= @
 
 # Tagging does not need the Nextcloud build environment, so this part
 # is always available and the rest is skipped for "make release".
-RELEASE_SCRIPT ?= $(ABSSRCDIR)/dev-scripts/release.sh
+# An app-local dev-scripts/release.sh overrides the generic shared script.
+RELEASE_SCRIPT ?= $(if $(wildcard $(ABSSRCDIR)/dev-scripts/release.sh),$(ABSSRCDIR)/dev-scripts/release.sh,$(DEV_LIB_DIR)/scripts/release.sh)
 
-#@@ Validate the unpublished changelog version, tag it, and push the release tag.
+#@@ Tag the version of appinfo/info.xml and push the release tag.
 release:
 	$(SILENT)test -f "$(RELEASE_SCRIPT)" || { echo 'Release script "$(RELEASE_SCRIPT)" not found, set RELEASE_SCRIPT.' 1>&2; exit 1; }
 	bash "$(RELEASE_SCRIPT)" $(if $(filter command line,$(origin VERSION)),"$(VERSION)")

@@ -8,6 +8,7 @@ intended change with:
 """
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import time
@@ -297,6 +298,57 @@ class ReleaseTest(AppMakefileTestCase):
     def test_missing_release_script(self):
         result = self.make("release", "RELEASE_SCRIPT=/nonexistent", success=False)
         self.assertIn("Release script", result.stderr)
+
+
+class GenericReleaseTest(AppMakefileTestCase):
+    def setUp(self):
+        super().setUp()
+        self.origin = self.app.parent / (self.app.name + "-origin.git")
+        self.addCleanup(shutil.rmtree, self.origin, True)
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "t@example.org")
+        self.git("config", "user.name", "T")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "init")
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
+        self.git("remote", "add", "origin", str(self.origin))
+        self.git("push", "-q", "-u", "origin", "main")
+
+    def git(self, *arguments):
+        return subprocess.run(["git", "-C", str(self.app), *arguments], check=True,
+                              capture_output=True, text=True).stdout
+
+    def tags(self):
+        return subprocess.run(["git", "--git-dir", str(self.origin), "tag"], check=True,
+                              capture_output=True, text=True).stdout.split()
+
+    def test_default_script_tags_info_xml_version(self):
+        self.make("release")
+        self.assertEqual(self.tags(), ["v1.2.3"])
+
+    def test_version_argument_must_match(self):
+        self.make("release", "VERSION=1.2.3")
+        self.assertEqual(self.tags(), ["v1.2.3"])
+        self.assertIn("differs", self.make("release", "VERSION=9.9.9", success=False).stderr)
+
+    def test_refuses_existing_tag(self):
+        self.make("release")
+        self.assertIn("already", self.make("release", success=False).stderr)
+
+    def test_refuses_dirty_tree_and_other_branch(self):
+        self.write("dirty", "x")
+        self.assertIn("clean", self.make("release", success=False).stderr)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "more")
+        self.assertIn("match", self.make("release", success=False).stderr)
+        self.git("checkout", "-q", "-b", "topic")
+        self.assertIn("main branch", self.make("release", success=False).stderr)
+        self.assertEqual(self.tags(), [])
+
+    def test_app_local_script_overrides_default(self):
+        self.write("dev-scripts/release.sh", '#!/bin/sh\necho "local[$*]"\n')
+        self.assertEqual(self.make("release").stdout.strip().splitlines()[-1], "local[]")
+        self.assertEqual(self.tags(), [])
 
 
 class CleanTest(AppMakefileTestCase):

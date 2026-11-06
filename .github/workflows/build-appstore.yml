@@ -198,7 +198,13 @@ jobs:
           APP_VERSION: ${{ steps.meta.outputs.version }}
           CHECK_JS: ${{ inputs.check-js-bundles }}
         run: |
-          archive=$(ls build/artifacts/appstore/"$APP_ID-$APP_VERSION".tar.*)
+          # the glob also matches the detached signature, so skip it
+          archives=()
+          for file in build/artifacts/appstore/"$APP_ID-$APP_VERSION".tar.*; do
+            case "$file" in *.sig) ;; *) [ -f "$file" ] && archives+=("$file");; esac
+          done
+          [ "${#archives[@]}" -eq 1 ] || { echo "::error::Expected exactly one archive, found ${#archives[@]}: ${archives[*]}"; exit 1; }
+          archive=${archives[0]}
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
           if [ "$CHECK_JS" = true ]; then
             count=$(tar -taf "$archive" | grep -Ec "^$APP_ID/js/.*\.m?js$" || true)

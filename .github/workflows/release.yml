@@ -3,7 +3,8 @@
 # Reusable release workflow. Call it from a tag-triggered workflow
 # (`on: push: tags: ['v*']`) with `secrets: inherit`.
 # The tag must be `v<version>` with the version from appinfo/info.xml; a
-# version containing `-` is published as a pre-release.
+# version containing `-` is published as a pre-release (and never uploaded
+# to the app store). With `sign: false` an unsigned archive is attached.
 name: Release
 
 on:
@@ -29,10 +30,14 @@ on:
         description: Protected environment holding the signing secrets
         type: string
         default: release
-      publish-to-appstore:
-        description: Also upload the release to the Nextcloud app store; needs the APPSTORE_TOKEN secret
+      sign:
+        description: Sign the app files and the archive; false builds and attaches an unsigned archive (and implies no app store upload)
         type: boolean
-        default: false
+        default: true
+      upload-to-appstore:
+        description: Upload stable releases to the Nextcloud app store; skipped for pre-releases, unsigned builds and if the APPSTORE_TOKEN secret is absent
+        type: boolean
+        default: true
       download-base-url:
         description: Base URL of the release assets, defaults to the GitHub release download URL
         type: string
@@ -75,6 +80,7 @@ jobs:
     uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@v1
     with:
       release: true
+      sign: ${{ inputs.sign }}
       environment: ${{ inputs.environment }}
       php-version: ${{ inputs.php-version }}
       node-version: ${{ inputs.node-version }}
@@ -120,7 +126,7 @@ jobs:
             --title "$GITHUB_REF_NAME" --notes-file "$notes" $flags
 
   publish-appstore:
-    if: inputs.publish-to-appstore && needs.validate.outputs.prerelease != 'true'
+    if: inputs.upload-to-appstore && inputs.sign && needs.validate.outputs.prerelease != 'true'
     needs: [validate, build, publish]
     runs-on: ubuntu-latest
     steps:
@@ -134,7 +140,10 @@ jobs:
           BASE_URL: ${{ inputs.download-base-url || format('{0}/{1}/releases/download/{2}', github.server_url, github.repository, github.ref_name) }}
         run: |
           set -euo pipefail
-          test -n "$APPSTORE_TOKEN" || { echo "::error::APPSTORE_TOKEN is missing"; exit 1; }
+          if [ -z "$APPSTORE_TOKEN" ]; then
+            echo "::notice::APPSTORE_TOKEN is not set, skipping the app store upload"
+            exit 0
+          fi
           archive=$(ls assets/*.tar.gz)
           signature=$(base64 -w0 "$archive.sig")
           jq -n --arg download "$BASE_URL/$(basename "$archive")" --arg signature "$signature" \

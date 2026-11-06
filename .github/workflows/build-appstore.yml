@@ -52,9 +52,13 @@ on:
         type: boolean
         default: true
       release:
-        description: Sign the archive using the secrets and run in the protected environment
+        description: Run in the protected environment and sign the archive using the secrets (unless sign is false)
         type: boolean
         default: false
+      sign:
+        description: Only used if release is true; false builds an unsigned archive without server, keys or certificate
+        type: boolean
+        default: true
       environment:
         description: Name of the protected environment used if release is true
         type: string
@@ -140,7 +144,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Nextcloud server for signing
-        if: inputs.release
+        if: inputs.release && inputs.sign
         uses: actions/checkout@v5
         with:
           repository: ${{ inputs.signing-server-repository }}
@@ -151,7 +155,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nextcloud server for signing
-        if: inputs.release
+        if: inputs.release && inputs.sign
         working-directory: .signing-server
         run: |
           composer install --no-interaction --no-progress
@@ -159,7 +163,7 @@ jobs:
             --admin-user=admin --admin-pass=admin --no-interaction
 
       - name: Check signing secrets
-        if: inputs.release
+        if: inputs.release && inputs.sign
         env:
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
@@ -171,11 +175,11 @@ jobs:
         env:
           COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
           # Empty unless signing, then the Makefile signs the files and the archive.
-          APP_PRIVATE_KEY: ${{ inputs.release && secrets.APP_PRIVATE_KEY || '' }}
-          APP_PUBLIC_CRT: ${{ inputs.release && secrets.APP_PUBLIC_CRT || '' }}
-          OCC_ARGS: ${{ inputs.release && format('OCC={0}/.signing-server/occ', github.workspace) || '' }}
+          APP_PRIVATE_KEY: ${{ inputs.release && inputs.sign && secrets.APP_PRIVATE_KEY || '' }}
+          APP_PUBLIC_CRT: ${{ inputs.release && inputs.sign && secrets.APP_PUBLIC_CRT || '' }}
+          SIGN_ARGS: ${{ inputs.release && inputs.sign && format('OCC={0}/.signing-server/occ', github.workspace) || 'APPSTORE_SIGN=0' }}
           MAKE_ARGS: ${{ inputs.make-args }}
-        run: make appstore $OCC_ARGS $MAKE_ARGS
+        run: make appstore $SIGN_ARGS $MAKE_ARGS
 
       - name: Check generated TypeScript modules
         if: inputs.check-ts-types
@@ -203,7 +207,7 @@ jobs:
           fi
 
       - name: Verify signature
-        if: inputs.release
+        if: inputs.release && inputs.sign
         env:
           APP_ID: ${{ steps.meta.outputs.id }}
           APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}

@@ -642,3 +642,18 @@ alone) and pushed to the *currently checked-out branch* of the application
 It does nothing if already up to date, and refuses on a detached application
 HEAD, uncommitted changes in the submodule, or submodule commits not in
 `origin/main`.
+
+### Following the release tag: `dev-lib-sync-release`
+
+`make dev-lib-sync-release` behaves exactly like `dev-lib-sync` but moves the
+submodule to the commit of the tag `$(DEV_LIB_SYNC_TAG)` (default `v1`, the
+floating release line the apps' reusable workflows are pinned to) instead of
+`origin/main`. Set e.g. `make dev-lib-sync-release DEV_LIB_SYNC_TAG=v2` for
+another major version. Because the floating tag is force-moved, it fetches
+with `git fetch --tags --force`, and it resolves `refs/tags/<tag>^{commit}`,
+which also works for annotated tags. The commit message is
+`Update dev-scripts/lib to v1 (<sha>)`. The same refusals apply
+(detached application HEAD, dirty submodule, submodule commits not contained
+in the tag); it never force-pushes. The shared logic lives in
+`scripts/dev-lib-sync.sh`.
+

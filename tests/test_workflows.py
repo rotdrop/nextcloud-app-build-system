@@ -56,5 +56,34 @@ class SelectArchiveTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
+RELEASE = ROOT / ".github/workflows/release.yml"
+
+
+def appstore_payload(prerelease):
+    text = RELEASE.read_text()
+    match = re.search(r"jq -n (.*?) \\\n\s+'(.*?)' \\\n", text, re.S)
+    assert match, "jq call not found"
+    arguments = match.group(1).replace('$BASE_URL/$(basename "$archive")', "http://x/a.tar.gz")
+    arguments = arguments.replace('"$signature"', "SIG").replace('"$NIGHTLY"', prerelease)
+    result = subprocess.run(["bash", "-c", f"jq -cn {arguments} '{match.group(2)}'"],
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+class AppstoreUploadTest(unittest.TestCase):
+    def test_prerelease_is_nightly(self):
+        self.assertIn('"nightly":true', appstore_payload("true"))
+
+    def test_stable_release_is_not_nightly(self):
+        self.assertIn('"nightly":false', appstore_payload("false"))
+
+    def test_upload_job_conditions(self):
+        text = RELEASE.read_text()
+        job = text[text.index("  publish-appstore:"):]
+        condition = re.search(r"if: (.*)", job).group(1)
+        self.assertEqual(condition, "inputs.upload-to-appstore && inputs.sign")
+
+
 if __name__ == "__main__":
     unittest.main()

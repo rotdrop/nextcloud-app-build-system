@@ -95,6 +95,23 @@ try {
     echo "The process control (PCNTL) extensions are required in case you want to interrupt long running commands - see http://php.net/manual/en/book.pcntl.php" . PHP_EOL;
   }
 
+  // Nextcloud only sets up the autoloading of enabled apps. A build
+  // checkout mounted into a fresh server tree (e.g. in CI) is not enabled,
+  // so register its namespace here; this is a no-op for enabled apps.
+  $appInfoFile = $appRoot . '/appinfo/info.xml';
+  $appInfo = is_file($appInfoFile) ? simplexml_load_file($appInfoFile) : false;
+  if ($appInfo !== false && !empty((string)$appInfo->id) && !empty((string)$appInfo->namespace)) {
+    $appId = (string)$appInfo->id;
+    $appNamespace = 'OCA\\' . (string)$appInfo->namespace;
+    $appManager = \OCP\Server::get(\OCP\App\IAppManager::class);
+    if (method_exists($appManager, 'registerAutoloading')) {
+      $appManager->registerAutoloading($appId, $appRoot);
+    } elseif (is_dir($appRoot . '/lib')) {
+      \OC::$server->registerNamespace($appId, $appNamespace);
+      \OC::$composerAutoloader->addPsr4($appNamespace . '\\', $appRoot . '/lib/', true);
+    }
+  }
+
   // $application = \OCP\Server::get(Application::class);
 } catch (Exception $ex) {
   exceptionHandler($ex);

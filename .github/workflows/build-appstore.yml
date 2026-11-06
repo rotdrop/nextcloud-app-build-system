@@ -64,6 +64,10 @@ on:
         description: Name of the protected environment used if release is true
         type: string
         default: release
+      composer-use-github-api:
+        description: Let Composer use the GitHub API for github.com VCS repositories. Set to false to make it clone with git instead, which avoids exhausting the API rate limit ("Could not authenticate against github.com") for apps with many VCS repositories in composer.json
+        type: boolean
+        default: true
       build-server:
         description: Build inside a Nextcloud server tree, the app is bind-mounted at <server>/apps/<app id>. Needed by apps whose dev scripts bootstrap Nextcloud (e.g. cafevdb); the same server is used for signing
         type: boolean
@@ -103,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.release && inputs.environment || '' }}
     timeout-minutes: 45
+    env:
+      COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
     outputs:
       id: ${{ steps.meta.outputs.id }}
       version: ${{ steps.meta.outputs.version }}
@@ -133,6 +139,10 @@ jobs:
           tools: composer:v2
           coverage: none
           ini-values: ${{ inputs.php-ini-values }}
+
+      - name: Configure Composer
+        if: "!inputs.composer-use-github-api"
+        run: composer config --global use-github-api false
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -167,7 +177,6 @@ jobs:
 
       - name: Build app archive
         env:
-          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
           # Empty unless signing, then the Makefile signs the files and the archive.
           APP_PRIVATE_KEY: ${{ inputs.release && inputs.sign && secrets.APP_PRIVATE_KEY || '' }}
           APP_PUBLIC_CRT: ${{ inputs.release && inputs.sign && secrets.APP_PUBLIC_CRT || '' }}

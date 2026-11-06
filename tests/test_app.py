@@ -1,0 +1,337 @@
+"""Tests for the shared application Makefile makefile/app.mk and its opt-in
+fragments, using a fixture app which mirrors the layout of a consuming app.
+
+The "make -n" snapshots live in tests/snapshots. Regenerate them after an
+intended change with:
+
+    UPDATE_SNAPSHOTS=1 python3 -B -m unittest tests.test_app
+"""
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SNAPSHOTS = Path(__file__).resolve().parent / "snapshots"
+
+XPATH_STUB = """#!/usr/bin/env python3
+import sys, xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[-1]).getroot()
+query = sys.argv[-2]
+texts = {
+    '/info/id/text()': 'id',
+    '/info/version/text()': 'version',
+    '/info/namespace/text()': 'namespace',
+    '/info/scopednamespace/text()': 'scopednamespace',
+}
+if query in texts:
+    print(root.findtext(texts[query]))
+elif 'max-version' in query:
+    print(root.find('dependencies/nextcloud').get('max-version'))
+"""
+
+INFO_XML = (
+    "<info><id>fixtureapp</id><version>1.2.3</version>"
+    "<namespace>FixtureApp</namespace>"
+    "<scopednamespace>Scoped</scopednamespace>"
+    '<dependencies><nextcloud min-version="33" max-version="35"/></dependencies>'
+    "</info>"
+)
+
+DEFAULT_MAKEFILE = (
+    "SRCDIR = .\n"
+    "ABSSRCDIR = $(CURDIR)\n"
+    "DEV_LIB_DIR = $(ABSSRCDIR)/dev-scripts/lib\n"
+    "{hooks}"
+    "include $(DEV_LIB_DIR)/makefile/app.mk\n"
+    "{rules}"
+)
+
+
+class AppMakefileTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.app = Path(self.temporary.name).resolve()
+        for name in ("composer.json.in", "package.json", "vite.config.ts",
+                     "eslint.config.mjs", "scoper.inc.php", "composer-scoped.json"):
+            self.write(name, "{}\n")
+        self.write("appinfo/info.xml", INFO_XML)
+        self.write("src/main.ts", "")
+        self.write("img/icon.svg", "")
+        self.write("l10n/de.js", "")
+        self.write("dev-scripts/MakeHelp/MakeHelp.mk", "help:\n\t@echo help\n")
+        self.write("dev-scripts/php-to-typescript.php", "")
+        (self.app / "dev-scripts/lib").symlink_to(ROOT)
+        self.write("xpath", XPATH_STUB)
+        (self.app / "xpath").chmod(0o755)
+        self.configure()
+        self.env = {**os.environ, "XDEBUG_MODE": "off", "HOME": str(self.app / "home")}
+        self.env.pop("VERSION", None)
+        self.env.pop("APP_VERSION", None)
+
+    def write(self, name, content):
+        path = self.app / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    def configure(self, hooks="", rules=""):
+        self.write("Makefile", DEFAULT_MAKEFILE.format(hooks=hooks, rules=rules))
+
+    @property
+    def tools(self):
+        # Fixed tool names keep the output independent of the host.
+        return [
+            f"XPATH={self.app / 'xpath'}", "PHP=php", "NPM=npm", "RSYNC=rsync",
+            "OPENSSL=openssl", "EMACS=emacs", "COMPOSER=composer",
+        ]
+
+    def make(self, *arguments, success=True, with_tools=True, env=None):
+        command = ["make", "--no-print-directory", "-C", str(self.app)]
+        if with_tools:
+            command += self.tools
+        result = subprocess.run(
+            [*command, *arguments], text=True, capture_output=True,
+            env=env or self.env,
+        )
+        if success:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        else:
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result
+
+    def ready_composer(self):
+        """Pretend composer ran, so that -n does not plan the dependency installation."""
+        self.write("composer.json", "{}\n")
+        self.write("composer.lock", "{}\n")
+        for tool in ("phpcs", "phpmd"):
+            path = self.app / f"vendor-bin/{tool}/vendor/bin/{tool}"
+            self.write(f"vendor-bin/{tool}/vendor/bin/{tool}", "")
+            path.chmod(0o755)
+        now = time.time_ns()
+        for name, age in (("composer.json.in", 100), ("composer.json", 50),
+                          ("composer.lock", 40), ("vendor-bin/phpcs/vendor/bin/phpcs", 30),
+                          ("vendor-bin/phpmd/vendor/bin/phpmd", 30)):
+            os.utime(self.app / name, ns=(now - age * 10**9,) * 2)
+
+    def normalize(self, text):
+        return text.replace(str(self.app), "@APP@").replace(str(ROOT), "@LIB@")
+
+    def assert_snapshot(self, name, text):
+        text = self.normalize(text)
+        path = SNAPSHOTS / f"{name}.txt"
+        if os.environ.get("UPDATE_SNAPSHOTS"):
+            SNAPSHOTS.mkdir(exist_ok=True)
+            path.write_text(text)
+        self.assertTrue(path.exists(), f"missing snapshot {path}")
+        self.assertEqual(path.read_text(), text, f"snapshot {name} differs")
+
+    def variable(self, name, hooks="", extra=()):
+        self.configure(
+            hooks=hooks,
+            rules=f"print-var:\n\t@echo '$({name})'\n",
+        )
+        return self.make("print-var", *extra).stdout.strip()
+
+
+class SnapshotTest(AppMakefileTestCase):
+    def test_appstore(self):
+        # Recursive make calls are replaced by "true" to snapshot only the recipe itself.
+        self.assert_snapshot("appstore", self.make("-n", "appstore", "MAKE=true").stdout)
+
+    def test_mostlyclean(self):
+        self.assert_snapshot("mostlyclean", self.make("-n", "mostlyclean").stdout)
+
+    def test_php_checks_and_tests(self):
+        self.write("lib/.keep", "")
+        self.write("appinfo/.keep", "")
+        self.ready_composer()
+        out = "".join(
+            self.make("-n", target).stdout
+            for target in ("phpcs", "phpcs-errors", "phpmd", "test", "run-tide")
+        )
+        self.assert_snapshot("php-checks", out)
+
+    def test_flavour_first_build(self):
+        self.configure(hooks="APP_BUILD_FLAVOUR_FIRST = 1\n")
+        self.assert_snapshot("build-flavour-first", self.make("-n", "build", "MAKE=true").stdout)
+
+    def test_generic_hooks(self):
+        self.configure(
+            hooks="APP_REQUIRED_TOOLS = WGET\nAPPSTORE_FILES_EXTRA = contrib\n"
+                  "APP_MOSTLYCLEAN_FILES = stamp.extra\nAPPSTORE_COPY_HOOK = copy-extra\n",
+            rules="dev-setup: extra-setup\nextra-setup:\n\t@echo extra-setup\n"
+                  "copy-extra:\n\t@echo copy-extra\n.PHONY: extra-setup copy-extra\n",
+        )
+        out = self.make("-n", "extra-setup", "copy-extra", "WGET=wget").stdout
+        self.assert_snapshot("generic-hooks", out)
+
+
+class VariableTest(AppMakefileTestCase):
+    def test_default_goal_is_help(self):
+        self.assertEqual(self.make().stdout.strip(), "help")
+
+    def test_version_is_read_from_info_xml(self):
+        self.assertEqual(self.variable("APP_VERSION"), "1.2.3")
+        self.assertIn("fixtureapp-1.2.3.tar.gz", self.variable("APPSTORE_PACKAGE_FILE"))
+
+    def test_version_alias_and_precedence(self):
+        self.assertEqual(self.variable("APP_VERSION", extra=["VERSION=4.5.6"]), "4.5.6")
+        package = self.variable("APPSTORE_PACKAGE_FILE", extra=["VERSION=4.5.6"])
+        self.assertTrue(package.endswith("fixtureapp-4.5.6.tar.gz"), package)
+        self.assertEqual(
+            self.variable("APP_VERSION", extra=["VERSION=4.5.6", "APP_VERSION=7.8.9"]),
+            "7.8.9",
+        )
+
+    def test_version_from_environment_is_ignored(self):
+        env = {**self.env, "VERSION": "9.9.9"}
+        self.configure(rules="print-var:\n\t@echo '$(APP_VERSION)'\n")
+        self.assertEqual(self.make("print-var", env=env).stdout.strip(), "1.2.3")
+
+    def test_compression(self):
+        package = self.variable("APPSTORE_PACKAGE_FILE", extra=["APPSTORE_COMPRESSION=J"])
+        self.assertTrue(package.endswith("fixtureapp-1.2.3.tar.xz"), package)
+
+    def test_hooks_have_defaults(self):
+        self.assertEqual(self.variable("APP_DEV_SETUP_DEPS"), "ts-app-config")
+        self.assertEqual(self.variable("BUNDLER_CONFIG"), "vite.config.ts")
+        self.assertEqual(self.variable("L10N_VITE_CONFIG"), "vite.l10n.config.ts")
+        self.assertEqual(self.variable("TS_PHP_SOURCE_DIRS"),
+                         "lib vendor-scoped/rotdrop/nextcloud-app-toolkit/src")
+
+    def test_hooks_can_be_overridden(self):
+        self.assertEqual(
+            self.variable("TS_PHP_SOURCE_DIRS", hooks="TS_PHP_SOURCE_DIRS = lib\n"), "lib")
+        self.assertEqual(
+            self.variable("L10N_VITE_CONFIG", hooks="L10N_VITE_CONFIG = other.ts\n"),
+            "other.ts")
+        deps = self.variable(
+            "BUNDLER_DEPS", hooks="JS_FILES_EXTRA = extra/file.vue\nBUNDLER_DEPS = mine.js\n")
+        self.assertIn("extra/file.vue", deps.split())
+        self.assertIn("mine.js", deps.split())
+        self.assertIn(str(self.app / "src/main.ts"), deps.split())
+
+    def test_notification_api_is_opt_in(self):
+        self.assertNotIn("notification-api", self.variable("BUNDLER_DEPS"))
+        deps = self.variable("BUNDLER_DEPS", hooks="APP_NOTIFICATION_API = 1\n")
+        self.assertTrue(any(d.endswith("notification-api.d.ts") for d in deps.split()), deps)
+        self.configure(hooks="APP_NOTIFICATION_API = 1\n")
+        out = self.make("-n", "ts-notification-api").stdout
+        self.assertIn("stable35/openapi.json", out)
+
+    def test_appstore_files_and_hook(self):
+        files = self.variable("APPSTORE_FILES", hooks="APPSTORE_FILES_EXTRA = contrib\n")
+        self.assertIn("vendor-scoped", files.split())
+        self.assertEqual(
+            self.variable("APPSTORE_FILES_EXTRA", hooks="APPSTORE_FILES_EXTRA = contrib\n"),
+            "contrib")
+        self.configure(
+            hooks="APPSTORE_COPY_HOOK = my-hook\n",
+            rules="my-hook:\n\t@echo hook-ran\n.PHONY: my-hook\n",
+        )
+        self.assertIn("true my-hook", self.make("-n", "appstore", "MAKE=true").stdout)
+
+
+class ToolTest(AppMakefileTestCase):
+    def test_missing_required_tool_is_an_error(self):
+        for tool in ("PHP", "NPM"):
+            with self.subTest(tool=tool):
+                result = self.make(f"{tool}=", success=False)
+                self.assertIn(f"{tool} binary is needed", result.stderr)
+
+    def test_wget_is_not_required_by_default(self):
+        self.make("all", "WGET=")
+
+    def test_optional_required_tools(self):
+        self.configure(hooks="APP_REQUIRED_TOOLS = WGET\n")
+        result = self.make("all", "WGET=", success=False)
+        self.assertIn("WGET binary is needed", result.stderr)
+        self.make("all", "WGET=wget")
+
+    def test_hooks_extend_dev_setup_mostlyclean_and_appstore(self):
+        self.configure(
+            hooks="APP_MOSTLYCLEAN_FILES = stamp.extra\nAPPSTORE_COPY_HOOK = copy-extra\n",
+            rules="dev-setup: extra-setup\nextra-setup:\n\t@echo extra-setup\n"
+                  "print-var:\n\t@echo '$(APP_MOSTLYCLEAN_FILES)|$(APPSTORE_COPY_HOOK)'\n"
+                  "print-deps:\n\t@echo '$^'\n",
+        )
+        self.assertEqual(self.make("print-var").stdout.strip(), "stamp.extra|copy-extra")
+        self.assertIn("echo extra-setup", self.make("-n", "dev-setup", "MAKE=true").stdout)
+
+
+class ReleaseTest(AppMakefileTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write("dev-scripts/release.sh", '#!/bin/sh\necho "release[$*]"\n')
+
+    def test_release_runs_the_script(self):
+        self.assertEqual(self.make("release").stdout.strip().splitlines()[-1], "release[]")
+        out = self.make("release", "VERSION=2.0.0").stdout.strip().splitlines()[-1]
+        self.assertEqual(out, "release[2.0.0]")
+
+    def test_release_does_not_need_the_build_environment(self):
+        self.make("release", "XPATH=", "PHP=", "NPM=", with_tools=False)
+        result = self.make("build", "XPATH=", "PHP=", with_tools=False, success=False)
+        self.assertIn("xpath", result.stderr)
+
+    def test_missing_release_script(self):
+        result = self.make("release", "RELEASE_SCRIPT=/nonexistent", success=False)
+        self.assertIn("Release script", result.stderr)
+
+
+class CleanTest(AppMakefileTestCase):
+    def populate(self):
+        for name in ("build/x", "vendor/x", "vendor-scoped/x", "vendor-bin/a/vendor/x",
+                     "node_modules/x", "sub/node_modules/x", "js/x.js", "css/x.css",
+                     "composer.lock", "composer.json", "package-lock.json", "build-flavour",
+                     ".vite/x", "stats.json", "report.html", "downloads/x"):
+            self.write(name, "{}" if name.endswith(".json") else "x")
+
+    def exists(self, name):
+        return (self.app / name).exists()
+
+    def test_clean_levels(self):
+        self.populate()
+        self.write("extra-generated", "x")
+        self.configure(
+            hooks="APP_MOSTLYCLEAN_FILES = extra-generated\n",
+            rules="hook-ran:\n\t@touch hook-ran\n",
+        )
+        self.make("clean")
+        self.assertFalse(self.exists("build"))
+        self.assertTrue(self.exists("vendor"))
+        self.make("distclean")
+        for name in ("vendor", "vendor-scoped", "vendor-bin/a/vendor", "node_modules",
+                     "sub/node_modules"):
+            self.assertFalse(self.exists(name), name)
+        self.assertTrue(self.exists("js/x.js"))
+        self.assertTrue(self.exists("composer.lock"))
+        self.make("mostlyclean")
+        for name in ("js/x.js", "css/x.css", "composer.lock", "composer.json",
+                     "package-lock.json", "build-flavour", ".vite", "stats.json",
+                     "report.html", "extra-generated"):
+            self.assertFalse(self.exists(name), name)
+        self.assertTrue(self.exists("downloads/x"))
+        self.assertTrue(self.exists("src/main.ts"))
+        self.make("realclean")
+        self.assertFalse(self.exists("downloads"))
+
+    def test_mostlyclean_deps_hook(self):
+        self.configure(
+            hooks="APP_MOSTLYCLEAN_DEPS = hook-ran\n",
+            rules="hook-ran:\n\t@touch hook-ran\n",
+        )
+        self.make("mostlyclean")
+        self.assertTrue(self.exists("hook-ran"))
+
+    def test_realclean_is_idempotent(self):
+        self.make("realclean")
+        self.make("realclean")
+
+
+if __name__ == "__main__":
+    unittest.main()

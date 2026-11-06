@@ -1,0 +1,18 @@
+rm -rf ./js/*
+rm -rf ./css/*
+rm -rf ./build
+rm -rf vendor vendor-scoped
+rm -rf vendor-bin/**/vendor
+find . -name node_modules -type d -prune -exec rm -rf {} + 2> /dev/null || true
+rm -f composer*.lock
+rm -f composer.json
+rm -f patches.lock.json
+rm -f vendor-bin/**/composer.lock
+rm -f vendor-bin/**/patches.lock.json
+rm -f stamp.composer-core-versions
+rm -f @APP@/build-flavour
+rm -rf .vite
+rm -f package-lock.json
+rm -f *.html
+rm -f stats.json
+rm -f 

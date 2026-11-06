@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Reusable CI workflow for apps using this build system: lint, clean-target
+# idempotency and an unsigned archive build. No Nextcloud server tree is used.
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      php-versions:
+        description: JSON array of PHP versions for the PHP lint job
+        type: string
+        default: '["8.2", "8.3", "8.4"]'
+      php-version:
+        description: PHP version used for the build jobs
+        type: string
+        default: '8.4'
+      node-version:
+        type: string
+        default: '24'
+      apt-packages:
+        description: Extra space-separated apt packages
+        type: string
+        default: ''
+      php-lint-dirs:
+        description: Space-separated directories to lint, missing ones are skipped
+        type: string
+        default: lib appinfo templates
+      verify-script:
+        description: Optional script run after the build, see build-appstore.yml
+        type: string
+        default: ''
+      make-args:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  eslint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Install and lint
+        run: |
+          npm install
+          npm run lint
+
+  php-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(inputs.php-versions) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+      - name: Lint PHP files
+        env:
+          DIRS: ${{ inputs.php-lint-dirs }}
+        run: |
+          dirs=""
+          for d in $DIRS; do [ -d "$d" ] && dirs="$dirs $d"; done
+          [ -z "$dirs" ] && exit 0
+          # shellcheck disable=SC2086
+          find $dirs -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+
+  realclean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install build utilities
+        env:
+          EXTRA_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml-xpath-perl rsync $EXTRA_PACKAGES
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+          ini-values: memory_limit=1G
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: realclean leaves a pristine tree, also after a build
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
+        run: |
+          check() {
+            if [ -n "$(git status --porcelain --ignored)" ]; then
+              git status --porcelain --ignored
+              echo "::error::$1 left files behind"
+              exit 1
+            fi
+          }
+          make realclean
+          make realclean
+          check "realclean"
+          make build
+          make realclean
+          check "realclean after build"
+
+  build:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@main
+    with:
+      php-version: ${{ inputs.php-version }}
+      node-version: ${{ inputs.node-version }}
+      apt-packages: ${{ inputs.apt-packages }}
+      verify-script: ${{ inputs.verify-script }}
+      make-args: ${{ inputs.make-args }}

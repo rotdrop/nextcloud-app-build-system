@@ -1,0 +1,6 @@
+@APP@/vendor-bin/phpcs/vendor/bin/phpcs -s --runtime-set ignore_warnings_on_exit 1 --report=emacs --standard=./.phpcs.xml lib appinfo
+@APP@/vendor-bin/phpcs/vendor/bin/phpcs -n --standard=./.phpcs.xml lib appinfo | grep FILE: | awk '{ print $2; }'
+@APP@/vendor-bin/phpmd/vendor/bin/phpmd --format text --ruleset ./.phpmd.xml lib appinfo
+@APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.xml
+@APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.integration.xml
+emacs --batch --file ./src/vue-app.ts -l @APP@/dev-scripts/lib/scripts/tide-project-errors.el|tee tide-errors.log

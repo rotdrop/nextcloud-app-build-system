@@ -206,7 +206,9 @@ appstore-copy-fonts:
   `$(HOME)` was hard-coded and signing failed in CI.
 - The font pipeline example fixes the `FONTS_DEST_DIR` typo, a double slash in
   the download URL and a missing dependency of the font list on the font stamp.
-- Not moved here: `release.sh`, `validate-release.py` and roundcube/bav
+- `make release` uses the generic `scripts/release.sh` unless the app has its
+  own `dev-scripts/release.sh`; it tags the `info.xml` version, see below.
+- Not moved here: `validate-release.py` and roundcube/bav
   specifics (`toolkit-l10n`, php-scoper rule, custom `l10n` rule).
 
 ## Reusable workflows
@@ -219,7 +221,7 @@ workflows. The app id and version are read from `appinfo/info.xml`.
 on: [push, pull_request]
 jobs:
   ci:
-    uses: rotdrop/nextcloud-app-build-system/.github/workflows/ci.yml@main
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/ci.yml@v1
     with:
       apt-packages: wget   # only if needed
 ```
@@ -231,7 +233,7 @@ on:
     tags: ['v*']
 jobs:
   release:
-    uses: rotdrop/nextcloud-app-build-system/.github/workflows/release.yml@main
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/release.yml@v1
     secrets: inherit       # APP_PRIVATE_KEY, APP_PUBLIC_CRT, optional APPSTORE_TOKEN
     permissions:
       contents: write
@@ -244,9 +246,20 @@ further inputs for the PHP extensions, `release`, `environment` and the
 signing server. `release.yml` can optionally publish to the app store
 (`publish-to-appstore`, default off).
 
-Note: the nested calls (`ci` and `release` call `build-appstore`) pin
-`@main` of this repository, because `uses:` cannot be computed; pin your own
-`@<tag>` on the outer call and adapt the inner ones when versioning.
+Versioning: reference the workflows by the floating major tag `@v1` (or an
+exact tag). The nested calls (`ci` and `release` call `build-appstore`) use
+`@v1` too, because `uses:` cannot be computed and `./` would resolve in the
+app's repository. When cutting a new major version, update these two
+references in the same commit, and move the `v1` tag with each compatible
+release.
+
+### `make release`
+
+`make release [VERSION=x.y.z]` runs `scripts/release.sh`, or the app's own
+`dev-scripts/release.sh` if it exists (`RELEASE_SCRIPT` overrides both). The
+script reads the version from `appinfo/info.xml`, requires a clean tree on the
+default branch (`RELEASE_BRANCH` overrides) matching the remote, and pushes
+the annotated tag `v<version>`, which triggers the release workflow.
 
 ### Is a Nextcloud server tree needed in CI?
 

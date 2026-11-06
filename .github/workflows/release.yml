@@ -72,7 +72,7 @@ jobs:
 
   build:
     needs: validate
-    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@main
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@v1
     with:
       release: true
       environment: ${{ inputs.environment }}

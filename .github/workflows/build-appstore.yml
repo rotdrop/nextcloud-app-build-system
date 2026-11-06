@@ -6,10 +6,11 @@
 # check on pull requests, so the two can never drift apart.
 #
 # The app id and version are read from appinfo/info.xml. The app is built
-# in its own checkout; no Nextcloud server tree is needed for building,
-# including the PHP-to-TypeScript generation. A server is only checked out
-# and installed when `release` is true, because `occ integrity:sign-app`
-# is part of a server.
+# in its own checkout; normally no Nextcloud server tree is needed for
+# building. A server is cloned and installed when `release` is true (signing
+# needs occ) or when `build-server` is true (apps whose dev scripts bootstrap
+# Nextcloud); in that case the app is bind-mounted at <server>/apps/<id> and
+# built there.
 name: Build app archive
 
 on:
@@ -63,12 +64,16 @@ on:
         description: Name of the protected environment used if release is true
         type: string
         default: release
+      build-server:
+        description: Build inside a Nextcloud server tree, the app is bind-mounted at <server>/apps/<app id>. Needed by apps whose dev scripts bootstrap Nextcloud (e.g. cafevdb); the same server is used for signing
+        type: boolean
+        default: false
       signing-server-repository:
-        description: Repository providing occ for signing, only used if release is true
+        description: Repository providing the server (occ for signing, and the build if build-server is true)
         type: string
         default: nextcloud/server
       signing-server-ref:
-        description: Ref of the signing server, only used if release is true
+        description: Branch or tag of the server, e.g. stable35 for apps targeting that release
         type: string
         default: master
     # The release caller must use `secrets: inherit` or pass these.
@@ -143,24 +148,13 @@ jobs:
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout Nextcloud server for signing
-        if: inputs.release && inputs.sign
-        uses: actions/checkout@v5
+      - name: Set up Nextcloud server
+        id: server
+        if: inputs.build-server || (inputs.release && inputs.sign)
+        uses: rotdrop/nextcloud-app-build-system/.github/actions/nextcloud-server@v1
         with:
           repository: ${{ inputs.signing-server-repository }}
           ref: ${{ inputs.signing-server-ref }}
-          submodules: recursive
-          # checkout refuses paths outside the workspace
-          path: .signing-server
-          persist-credentials: false
-
-      - name: Install Nextcloud server for signing
-        if: inputs.release && inputs.sign
-        working-directory: .signing-server
-        run: |
-          composer install --no-interaction --no-progress
-          php occ maintenance:install --database=sqlite \
-            --admin-user=admin --admin-pass=admin --no-interaction
 
       - name: Check signing secrets
         if: inputs.release && inputs.sign
@@ -177,8 +171,9 @@ jobs:
           # Empty unless signing, then the Makefile signs the files and the archive.
           APP_PRIVATE_KEY: ${{ inputs.release && inputs.sign && secrets.APP_PRIVATE_KEY || '' }}
           APP_PUBLIC_CRT: ${{ inputs.release && inputs.sign && secrets.APP_PUBLIC_CRT || '' }}
-          SIGN_ARGS: ${{ inputs.release && inputs.sign && format('OCC={0}/.signing-server/occ', github.workspace) || 'APPSTORE_SIGN=0' }}
+          SIGN_ARGS: ${{ inputs.release && inputs.sign && format('OCC={0}', steps.server.outputs.occ) || 'APPSTORE_SIGN=0' }}
           MAKE_ARGS: ${{ inputs.make-args }}
+        working-directory: ${{ inputs.build-server && steps.server.outputs.app-dir || github.workspace }}
         run: make appstore $SIGN_ARGS $MAKE_ARGS
 
       - name: Check generated TypeScript modules
@@ -217,12 +212,13 @@ jobs:
         env:
           APP_ID: ${{ steps.meta.outputs.id }}
           APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
+          OCC: ${{ steps.server.outputs.occ }}
         run: |
           set -euo pipefail
           sign_dir="$PWD/build/artifacts/appstore/sign/$APP_ID"
           test -s "$sign_dir/appinfo/signature.json" || { echo "::error::The app files were not signed"; exit 1; }
           test -s "$ARCHIVE.sig" || { echo "::error::The archive was not signed"; exit 1; }
-          php "$GITHUB_WORKSPACE/.signing-server/occ" integrity:check-app --path="$sign_dir" "$APP_ID"
+          php "$OCC" integrity:check-app --path="$sign_dir" "$APP_ID"
           crt=$(mktemp)
           trap 'rm -f "$crt"' EXIT
           printf '%s\n' "$APP_PUBLIC_CRT" > "$crt"

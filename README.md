@@ -293,18 +293,42 @@ the annotated tag `v<version>`, which triggers the release workflow.
 
 ### Is a Nextcloud server tree needed in CI?
 
-No. The workflows build the app in its own checkout. The pdf_downloader CI
-built inside a server tree; the PHP-to-TypeScript generation
-(`dev-scripts/php-to-typescript.php`) was run there without a server
+Normally no. The workflows build the app in its own checkout. The
+pdf_downloader CI built inside a server tree; the PHP-to-TypeScript generation
+(`dev-scripts/php-to-typescript.php`) runs there without a server
 (`libxml-xpath-perl`, and `memory_limit=1G` for php-scoper suffice) and
-produced `php-types.d.ts` and the module files. The only remaining use of a
-server is signing (`occ integrity:sign-app`, `integrity:check-app`); for
-that, `build-appstore.yml` checks out and installs a stock server only if
-`release` is true, and passes it as `OCC=`. files_archive and bav already
-build without a server. This was verified for pdf_downloader only; dokuwiki,
-redaxo and roundcube have to be confirmed when they are migrated. Not
-verified here: the vite build and the font download (sourceforge was
-unreachable from the sandbox), and the workflows themselves on GitHub.
+produces `php-types.d.ts` and the module files. Signing needs a server for
+`occ integrity:sign-app` and `integrity:check-app`; `build-appstore.yml`
+installs a stock server only if `release` is true and passes it as `OCC=`.
+files_archive and bav already build without a server. This was verified for
+pdf_downloader only; dokuwiki, redaxo and roundcube have to be confirmed when
+they are migrated.
+
+#### Opt-in: `build-server`
+
+Some apps (cafevdb, cafevdbmembers) have a `dev-scripts/php-to-typescript.php`
+that bootstraps Nextcloud through `lib/scripts/console-setup.php`, which
+requires `<app>/../../lib/versioncheck.php`: the app must live at
+`<server>/apps/<app id>`. For these, pass to `ci`, `build-appstore` or
+`release`:
+
+```yaml
+    with:
+      build-server: true
+      signing-server-ref: stable35   # branch or tag of nextcloud/server
+```
+
+`signing-server-repository` (default `nextcloud/server`) and
+`signing-server-ref` (default `master`) select the server. The composite
+action `.github/actions/nextcloud-server` clones it shallowly into
+`$RUNNER_TEMP`, runs `composer install` and `occ maintenance:install`, and
+bind-mounts the app checkout at `<server>/apps/<app id>` (a symlink does not
+work because the script resolves it with `realpath()`). `make appstore`, and
+in `ci` also the `realclean` job (whose `make build` generates the types too),
+run in that directory. The artifacts are written to the app checkout as usual.
+Signing reuses the same server. The default is `false` and then nothing
+changes. The action needs the `v1` tag to contain it, so it is not usable
+from a branch before the tag is moved.
 
 ## Scoped Composer configuration
 

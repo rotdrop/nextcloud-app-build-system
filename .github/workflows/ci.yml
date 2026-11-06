@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Reusable CI workflow for apps using this build system: lint, clean-target
-# idempotency and an unsigned archive build. No Nextcloud server tree is used.
+# idempotency and an unsigned archive build. No Nextcloud server tree is used unless
+# `build-server` is true.
 name: CI
 
 on:
@@ -33,6 +34,18 @@ on:
       make-args:
         type: string
         default: ''
+      build-server:
+        description: Build inside a Nextcloud server tree (the app is bind-mounted at <server>/apps/<app id>), for apps whose dev scripts bootstrap Nextcloud
+        type: boolean
+        default: false
+      signing-server-repository:
+        description: Repository providing the Nextcloud server
+        type: string
+        default: nextcloud/server
+      signing-server-ref:
+        description: Branch or tag of the Nextcloud server, e.g. stable35
+        type: string
+        default: master
 
 permissions:
   contents: read
@@ -93,13 +106,23 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ inputs.php-version }}
+          # the Nextcloud server install needs these
+          extensions: ${{ inputs.build-server && 'ctype, curl, dom, fileinfo, gd, iconv, intl, mbstring, openssl, pdo_sqlite, posix, simplexml, sqlite3, xml, zip, apcu, bcmath, gmp, imagick' || '' }}
           tools: composer:v2
           coverage: none
-          ini-values: memory_limit=1G
+          ini-values: ${{ inputs.build-server && 'apc.enable_cli=1, memory_limit=1G' || 'memory_limit=1G' }}
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
+      - name: Set up Nextcloud server
+        id: server
+        if: inputs.build-server
+        uses: rotdrop/nextcloud-app-build-system/.github/actions/nextcloud-server@v1
+        with:
+          repository: ${{ inputs.signing-server-repository }}
+          ref: ${{ inputs.signing-server-ref }}
       - name: realclean leaves a pristine tree, also after a build
+        working-directory: ${{ inputs.build-server && steps.server.outputs.app-dir || github.workspace }}
         env:
           COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
         run: |
@@ -125,3 +148,6 @@ jobs:
       apt-packages: ${{ inputs.apt-packages }}
       verify-script: ${{ inputs.verify-script }}
       make-args: ${{ inputs.make-args }}
+      build-server: ${{ inputs.build-server }}
+      signing-server-repository: ${{ inputs.signing-server-repository }}
+      signing-server-ref: ${{ inputs.signing-server-ref }}

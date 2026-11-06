@@ -86,6 +86,28 @@ class AppstoreUploadTest(unittest.TestCase):
         # the token is an environment secret, so the job needs the environment
         self.assertIn("environment: ${{ inputs.environment }}", job.split("steps:")[0])
 
+    def test_missing_token_guard(self):
+        text = RELEASE.read_text()
+        job = text[text.index("  publish-appstore:"):]
+        guard = re.search(r'if \[ -z "\$APPSTORE_TOKEN" \]; then\n(.*?)\n\s+fi\n', job, re.S).group(1)
+        self.assertIn('if [ "$NIGHTLY" = true ]', guard)
+        self.assertIn("::warning::", guard)
+        self.assertIn("::error::", guard)
+        self.assertLess(guard.index("::warning::"), guard.index("exit 0"))
+        self.assertLess(guard.index("exit 0"), guard.index("::error::"))
+        self.assertLess(guard.index("::error::"), guard.rindex("exit 1"))
+
+    def test_missing_token_behaviour(self):
+        text = RELEASE.read_text()
+        job = text[text.index("  publish-appstore:"):]
+        guard = re.search(r'(if \[ -z "\$APPSTORE_TOKEN" \]; then\n.*?\n\s+fi)\n', job, re.S).group(1)
+        guard = guard.replace("${{ inputs.environment }}", "release")
+        for nightly, code in (("true", 0), ("false", 1)):
+            res = subprocess.run(["bash", "-c", guard],
+                                 env={"APPSTORE_TOKEN": "", "NIGHTLY": nightly, "PATH": os.environ["PATH"]},
+                                 capture_output=True, text=True)
+            self.assertEqual(res.returncode, code, res.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

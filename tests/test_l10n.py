@@ -352,6 +352,7 @@ class L10nMakefileTest(unittest.TestCase):
             '\t@test "$(APP_TOOLKIT_DIR)" = "$(CURDIR)/custom-vendor/'
             f'{TOOLKIT}"\n'
             '\t@test "$(PHP)" = "php -d memory_limit=128M"\n'
+            '\t@test "$(L10N_IGNORE)" = "$(CURDIR)/.l10nignore"\n'
             '\t@mkdir -p "$(dir $(APP_TOOLKIT_L10N_DEST))"\n'
             '\t@printf toolkit > "$(APP_TOOLKIT_L10N_DEST)"\n',
         )

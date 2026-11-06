@@ -46,7 +46,8 @@ toolkit-l10n:
 ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
 	$(MAKE) --no-print-directory -f "$(APP_TOOLKIT_DIR)/tools/l10n.mk" \
 		ABSSRCDIR="$(ABSSRCDIR)" APP_TOOLKIT_DIR="$(APP_TOOLKIT_DIR)" \
-		APP_TOOLKIT_L10N_DEST="$(APP_TOOLKIT_L10N_DEST)" PHP="$(PHP)" toolkit-l10n
+		APP_TOOLKIT_L10N_DEST="$(APP_TOOLKIT_L10N_DEST)" \
+		L10N_IGNORE="$(L10N_IGNORE)" PHP="$(PHP)" toolkit-l10n
 endif
 .PHONY: toolkit-l10n
 

@@ -1,0 +1,38 @@
+true clean
+true build
+composer update --no-dev
+mkdir -p ./build/artifacts/appstore/sign/fixtureapp
+rsync -a -L --exclude '.htaccess' --exclude '.git*' --exclude '.*keep' --exclude '*~' appinfo css js img l10n templates lib vendor vendor-scoped composer CHANGELOG.md COPYING README.md  ./build/artifacts/appstore/sign/fixtureapp
+mkdir -p ./build/tools/certificates
+umask 077;\
+if [ -n "$APP_PRIVATE_KEY" ]; then\
+  echo "$APP_PRIVATE_KEY" > ./build/tools/certificates/fixtureapp.key;\
+elif [ -f "@APP@/home/.nextcloud/certificates/fixtureapp.key" ]; then\
+  cp @APP@/home/.nextcloud/certificates/fixtureapp.key ./build/tools/certificates/fixtureapp.key;\
+fi;\
+if [ -n "$APP_PUBLIC_CRT" ]; then\
+  echo "$APP_PUBLIC_CRT" > ./build/tools/certificates/fixtureapp.crt;\
+fi
+if [ -f ./build/tools/certificates/fixtureapp.key ] && [ ! -f ./build/tools/certificates/fixtureapp.crt ]; then\
+  curl -L -o ./build/tools/certificates/fixtureapp.crt\
+ "https://github.com/nextcloud/app-certificate-requests/raw/master/fixtureapp/fixtureapp.crt";\
+  openssl x509 -in ./build/tools/certificates/fixtureapp.crt -noout -text > /dev/null 2>&1 || rm -f ./build/tools/certificates/fixtureapp.crt;\
+fi
+if [ -f ./build/tools/certificates/fixtureapp.key ] && [ -f ./build/tools/certificates/fixtureapp.crt ]; then\
+  echo "Signing app files ...";\
+  php @APP@/../../occ integrity:sign-app\
+ --privateKey=@APP@/./build/tools/certificates/fixtureapp.key\
+ --certificate=@APP@/./build/tools/certificates/fixtureapp.crt\
+ --path=@APP@/./build/artifacts/appstore/sign/fixtureapp;\
+  echo "... signing app files done";\
+else\
+  echo 'Cannot sign app-files, certificate "./build/tools/certificates/fixtureapp.crt" or private key "./build/tools/certificates/fixtureapp.key" not available.' 1>&2;\
+fi
+tar -czf ./build/artifacts/appstore/fixtureapp-1.2.3.tar.gz -C ./build/artifacts/appstore/sign fixtureapp
+if [ -f ./build/tools/certificates/fixtureapp.key ] && [ -f ./build/tools/certificates/fixtureapp.crt ]; then\
+  echo "Signing package ...";\
+  openssl dgst -sha512 -sign ./build/tools/certificates/fixtureapp.key -out ./build/artifacts/appstore/fixtureapp-1.2.3.tar.gz.sig ./build/artifacts/appstore/fixtureapp-1.2.3.tar.gz;\
+  openssl base64 -in ./build/artifacts/appstore/fixtureapp-1.2.3.tar.gz.sig;\
+else\
+  echo 'Cannot sign app-store package, certificate "./build/tools/certificates/fixtureapp.crt" or private key "./build/tools/certificates/fixtureapp.key" not available.' 1>&2;\
+fi

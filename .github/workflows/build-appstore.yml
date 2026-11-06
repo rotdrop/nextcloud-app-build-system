@@ -1,0 +1,249 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Reusable workflow building the ready-to-use app archive (the same
+# artifact as `make appstore`) and uploading it as a workflow artifact.
+# It serves both as the build stage of the release workflow and as a
+# check on pull requests, so the two can never drift apart.
+#
+# The app id and version are read from appinfo/info.xml. The app is built
+# in its own checkout; no Nextcloud server tree is needed for building,
+# including the PHP-to-TypeScript generation. A server is only checked out
+# and installed when `release` is true, because `occ integrity:sign-app`
+# is part of a server.
+name: Build app archive
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version used for the build
+        type: string
+        default: '8.4'
+      php-extensions:
+        description: PHP extensions to install; the default suits the Nextcloud server install needed for signing
+        type: string
+        default: ctype, curl, dom, fileinfo, gd, iconv, intl, mbstring, openssl, pdo_sqlite, posix, simplexml, sqlite3, xml, zip, apcu, bcmath, gmp, imagick
+      php-ini-values:
+        description: PHP ini values
+        type: string
+        default: apc.enable_cli=1, memory_limit=1G
+      node-version:
+        description: Node.js version used for the build
+        type: string
+        default: '24'
+      apt-packages:
+        description: Extra space-separated apt packages; libxml-xpath-perl and rsync are always installed
+        type: string
+        default: ''
+      make-args:
+        description: Extra arguments for `make appstore`, e.g. APPSTORE_COMPRESSION=J
+        type: string
+        default: ''
+      verify-script:
+        description: Optional script path relative to the app root, run after the build with APP_ID, APP_VERSION and ARCHIVE in the environment
+        type: string
+        default: ''
+      check-ts-types:
+        description: Type-check the generated TypeScript modules if typescript is installed
+        type: boolean
+        default: true
+      check-js-bundles:
+        description: Fail if the archive contains no JS bundles
+        type: boolean
+        default: true
+      release:
+        description: Sign the archive using the secrets and run in the protected environment
+        type: boolean
+        default: false
+      environment:
+        description: Name of the protected environment used if release is true
+        type: string
+        default: release
+      signing-server-repository:
+        description: Repository providing occ for signing, only used if release is true
+        type: string
+        default: nextcloud/server
+      signing-server-ref:
+        description: Ref of the signing server, only used if release is true
+        type: string
+        default: master
+    # The release caller must use `secrets: inherit` or pass these.
+    secrets:
+      APP_PRIVATE_KEY:
+        description: Private key for signing, required if release is true
+        required: false
+      APP_PUBLIC_CRT:
+        description: Public certificate for signing, required if release is true
+        required: false
+    outputs:
+      id:
+        description: The app id read from appinfo/info.xml
+        value: ${{ jobs.build.outputs.id }}
+      version:
+        description: The app version read from appinfo/info.xml
+        value: ${{ jobs.build.outputs.version }}
+      artifact:
+        description: Name of the uploaded artifact
+        value: ${{ jobs.build.outputs.id }}-${{ jobs.build.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.release && inputs.environment || '' }}
+    timeout-minutes: 45
+    outputs:
+      id: ${{ steps.meta.outputs.id }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Use HTTPS for submodules
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Checkout app
+        uses: actions/checkout@v5
+        with:
+          # dev-scripts/lib and dev-scripts/MakeHelp are git submodules.
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install build utilities
+        env:
+          EXTRA_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          sudo apt-get update
+          # EXTRA_PACKAGES is intentionally split into words.
+          sudo apt-get install -y --no-install-recommends libxml-xpath-perl rsync $EXTRA_PACKAGES
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: ${{ inputs.php-extensions }}
+          tools: composer:v2
+          coverage: none
+          ini-values: ${{ inputs.php-ini-values }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Read app id and version
+        id: meta
+        run: |
+          id=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->id;')
+          version=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->version;')
+          test -n "$id" && test -n "$version" || { echo "::error::appinfo/info.xml lacks id or version"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Nextcloud server for signing
+        if: inputs.release
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.signing-server-repository }}
+          ref: ${{ inputs.signing-server-ref }}
+          submodules: recursive
+          # checkout refuses paths outside the workspace
+          path: .signing-server
+          persist-credentials: false
+
+      - name: Install Nextcloud server for signing
+        if: inputs.release
+        working-directory: .signing-server
+        run: |
+          composer install --no-interaction --no-progress
+          php occ maintenance:install --database=sqlite \
+            --admin-user=admin --admin-pass=admin --no-interaction
+
+      - name: Check signing secrets
+        if: inputs.release
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
+        run: |
+          test -n "$APP_PRIVATE_KEY" || { echo "::error::APP_PRIVATE_KEY is missing"; exit 1; }
+          test -n "$APP_PUBLIC_CRT" || { echo "::error::APP_PUBLIC_CRT is missing"; exit 1; }
+
+      - name: Build app archive
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ github.token }}"}}'
+          # Empty unless signing, then the Makefile signs the files and the archive.
+          APP_PRIVATE_KEY: ${{ inputs.release && secrets.APP_PRIVATE_KEY || '' }}
+          APP_PUBLIC_CRT: ${{ inputs.release && secrets.APP_PUBLIC_CRT || '' }}
+          OCC_ARGS: ${{ inputs.release && format('OCC={0}/.signing-server/occ', github.workspace) || '' }}
+          MAKE_ARGS: ${{ inputs.make-args }}
+        run: make appstore $OCC_ARGS $MAKE_ARGS
+
+      - name: Check generated TypeScript modules
+        if: inputs.check-ts-types
+        run: |
+          if [ -x node_modules/.bin/tsc ] && [ -d build/ts-types/php-modules ]; then
+            node_modules/.bin/tsc --ignoreConfig --noEmit \
+              --allowImportingTsExtensions --target es2022 --module nodenext \
+              $(find build/ts-types/php-modules -name '*.ts')
+          else
+            echo "No typescript or generated modules, skipping."
+          fi
+
+      - name: Sanity-check the archive
+        env:
+          APP_ID: ${{ steps.meta.outputs.id }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          CHECK_JS: ${{ inputs.check-js-bundles }}
+        run: |
+          archive=$(ls build/artifacts/appstore/"$APP_ID-$APP_VERSION".tar.*)
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+          if [ "$CHECK_JS" = true ]; then
+            count=$(tar -taf "$archive" | grep -Ec "^$APP_ID/js/.*\.m?js$" || true)
+            echo "JS bundles in archive: $count"
+            test "$count" -gt 0 || { echo "::error::No JS bundles in the archive - the bundler build produced nothing"; exit 1; }
+          fi
+
+      - name: Verify signature
+        if: inputs.release
+        env:
+          APP_ID: ${{ steps.meta.outputs.id }}
+          APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
+        run: |
+          set -euo pipefail
+          sign_dir="$PWD/build/artifacts/appstore/sign/$APP_ID"
+          test -s "$sign_dir/appinfo/signature.json" || { echo "::error::The app files were not signed"; exit 1; }
+          test -s "$ARCHIVE.sig" || { echo "::error::The archive was not signed"; exit 1; }
+          php "$GITHUB_WORKSPACE/.signing-server/occ" integrity:check-app --path="$sign_dir" "$APP_ID"
+          crt=$(mktemp)
+          trap 'rm -f "$crt"' EXIT
+          printf '%s\n' "$APP_PUBLIC_CRT" > "$crt"
+          openssl x509 -in "$crt" -checkend 0 -noout
+          openssl x509 -in "$crt" -pubkey -noout > "$crt.pem"
+          openssl dgst -sha512 -verify "$crt.pem" -signature "$ARCHIVE.sig" "$ARCHIVE"
+          rm -f "$crt.pem"
+
+      - name: Run verify script
+        if: inputs.verify-script != ''
+        env:
+          APP_ID: ${{ steps.meta.outputs.id }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          VERIFY_SCRIPT: ${{ inputs.verify-script }}
+        run: bash "$VERIFY_SCRIPT"
+
+      - name: Collect release files
+        env:
+          APP_ID: ${{ steps.meta.outputs.id }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          name="$APP_ID-$APP_VERSION.tar.${ARCHIVE##*.tar.}"
+          cp "$ARCHIVE" "$RUNNER_TEMP/out/$name"
+          if [ -f "$ARCHIVE.sig" ]; then cp "$ARCHIVE.sig" "$RUNNER_TEMP/out/$name.sig"; fi
+          (cd "$RUNNER_TEMP/out" && sha256sum "$name" > "$name.sha256")
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.meta.outputs.id }}-${{ steps.meta.outputs.version }}
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error

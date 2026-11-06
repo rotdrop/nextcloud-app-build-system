@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Reusable release workflow. Call it from a tag-triggered workflow
+# (`on: push: tags: ['v*']`) with `secrets: inherit`.
+# The tag must be `v<version>` with the version from appinfo/info.xml; a
+# version containing `-` is published as a pre-release.
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        type: string
+        default: '8.4'
+      node-version:
+        type: string
+        default: '24'
+      apt-packages:
+        type: string
+        default: ''
+      make-args:
+        type: string
+        default: ''
+      verify-script:
+        description: Optional script run in the build, see build-appstore.yml
+        type: string
+        default: ''
+      environment:
+        description: Protected environment holding the signing secrets
+        type: string
+        default: release
+      publish-to-appstore:
+        description: Also upload the release to the Nextcloud app store; needs the APPSTORE_TOKEN secret
+        type: boolean
+        default: false
+      download-base-url:
+        description: Base URL of the release assets, defaults to the GitHub release download URL
+        type: string
+        default: ''
+    secrets:
+      APP_PRIVATE_KEY:
+        required: false
+      APP_PUBLIC_CRT:
+        required: false
+      APPSTORE_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: none
+      - name: Check tag against appinfo/info.xml
+        id: check
+        run: |
+          version=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->version;')
+          [ "$GITHUB_REF_TYPE" = tag ] || { echo "::error::Not a tag run"; exit 1; }
+          [ "$GITHUB_REF_NAME" = "v$version" ] || {
+            echo "::error::Tag $GITHUB_REF_NAME does not match info.xml version $version"; exit 1; }
+          case "$version" in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT";; *) echo "prerelease=false" >> "$GITHUB_OUTPUT";; esac
+
+  build:
+    needs: validate
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@main
+    with:
+      release: true
+      environment: ${{ inputs.environment }}
+      php-version: ${{ inputs.php-version }}
+      node-version: ${{ inputs.node-version }}
+      apt-packages: ${{ inputs.apt-packages }}
+      make-args: ${{ inputs.make-args }}
+      verify-script: ${{ inputs.verify-script }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      APP_PUBLIC_CRT: ${{ secrets.APP_PUBLIC_CRT }}
+
+  publish:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: assets
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          notes=$(mktemp)
+          if [ -f release-notes.md ]; then
+            cp release-notes.md "$notes"
+          elif [ -f CHANGELOG.md ]; then
+            # the section of the released version, up to the next heading
+            awk -v v="$APP_VERSION" '
+              /^##+ / { if (found) exit; if (index($0, v)) { found = 1; next } }
+              found { print }' CHANGELOG.md > "$notes"
+          fi
+          [ -s "$notes" ] || echo "Release $APP_VERSION" > "$notes"
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease"
+          gh release create "$GITHUB_REF_NAME" assets/* \
+            --title "$GITHUB_REF_NAME" --notes-file "$notes" $flags
+
+  publish-appstore:
+    if: inputs.publish-to-appstore && needs.validate.outputs.prerelease != 'true'
+    needs: [validate, build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: assets
+      - name: Register release in the app store
+        env:
+          APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
+          BASE_URL: ${{ inputs.download-base-url || format('{0}/{1}/releases/download/{2}', github.server_url, github.repository, github.ref_name) }}
+        run: |
+          set -euo pipefail
+          test -n "$APPSTORE_TOKEN" || { echo "::error::APPSTORE_TOKEN is missing"; exit 1; }
+          archive=$(ls assets/*.tar.gz)
+          signature=$(base64 -w0 "$archive.sig")
+          jq -n --arg download "$BASE_URL/$(basename "$archive")" --arg signature "$signature" \
+            '{download: $download, signature: $signature, nightly: false}' \
+            | curl -fsS -X POST https://apps.nextcloud.com/api/v1/apps/releases \
+                -H "Authorization: Token $APPSTORE_TOKEN" -H 'Content-Type: application/json' -d @-

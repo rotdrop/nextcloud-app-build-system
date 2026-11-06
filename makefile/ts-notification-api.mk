@@ -9,7 +9,7 @@ TS_NOTIFICATION_API = $(TS_TYPES_DIR)/notification-api.d.ts
 
 #@private
 ts-notification-api: $(TS_NOTIFICATION_API)
-.PHONY: ts-app-config
+.PHONY: ts-notification-api
 
 #@private
 $(TS_NOTIFICATION_API): $(MAKEFILE_DEP) $(DEV_LIB_DIR)/makefile/ts-notification-api.mk

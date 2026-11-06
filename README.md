@@ -67,6 +67,109 @@ repositories:
 | pdf_downloader | [rotdrop/nextcloud-app-pdf-downloader](https://github.com/rotdrop/nextcloud-app-pdf-downloader) |
 | redaxo | [rotdrop/nextcloud-app-redaxo](https://github.com/rotdrop/nextcloud-app-redaxo) |
 
+## Shared app Makefile: `makefile/app.mk`
+
+`makefile/app.mk` contains everything the app Makefiles used to duplicate:
+tool detection and guards, the `APPSTORE_*` variables, appstore packaging
+and signing, `clean`/`distclean`/`mostlyclean`/`realclean`, tests,
+`phpcs`/`phpmd` (with auto-install rules), `tide` and `release`. An app
+Makefile shrinks to its hooks plus the include:
+
+```make
+SRCDIR = .
+ABSSRCDIR = $(CURDIR)
+DEV_LIB_DIR = $(ABSSRCDIR)/dev-scripts/lib
+
+APP_BUILD_FLAVOUR_FIRST = 1
+APP_NOTIFICATION_API = 1
+APPSTORE_FILES_EXTRA = contrib
+
+include $(DEV_LIB_DIR)/makefile/app.mk
+include $(DEV_LIB_DIR)/makefile/tcpdf-fonts.mk # optional
+```
+
+Hooks must be set before the include. The complete list is documented in the
+header of `app.mk`: `APP_DEV_SETUP_DEPS`, `APP_REQUIRED_TOOLS`,
+`APP_BUILD_FLAVOUR_FIRST`, `APP_NOTIFICATION_API`, `APP_PHP_DIRS`,
+`APP_MOSTLYCLEAN_DEPS`/`APP_MOSTLYCLEAN_FILES`, `APPSTORE_FILES`,
+`APPSTORE_FILES_EXTRA`, `APPSTORE_COPY_HOOK`, `APPSTORE_COMPOSER_ARGS`,
+`JS_FILES_EXTRA`, `TS_PHP_SOURCE_DIRS`, `L10N_VITE_CONFIG`, `RELEASE_SCRIPT`.
+
+`makefile/tcpdf-fonts.mk` is the opt-in DejaVu/TCPDF font pipeline of
+pdf_downloader. It is the only fragment requiring `wget`; `wget` is otherwise
+not required (add it with `APP_REQUIRED_TOOLS = WGET`).
+
+### Decisions on drift between the app Makefiles
+
+- `APP_VERSION` is the single version variable (from `appinfo/info.xml`).
+  `VERSION=...` on the command line is accepted as an alias (bav used it);
+  an environment `VERSION` is deliberately ignored.
+- Tool paths use `$(ABSSRCDIR)/vendor-bin/...` (bav used `./vendor/bin/phpunit`).
+- `phpcs`/`phpmd` follow the redaxo/dokuwiki variant, `phpcs-errors` comes from roundcube.
+- App-specific file lists moved to `APPSTORE_FILES_EXTRA` (`config`, `contrib`)
+  and `JS_FILES_EXTRA`. The `mostlyclean` list is the union of all apps.
+- Package signing now uses the key actually in use (`APP_PRIVATE_KEY` or the
+  certificate directory) and writes `<archive>.sig`; before, the key from
+  `$(HOME)` was hard-coded and signing failed in CI.
+- Fixed in the font fragment: the `FONTS_DEST_DIR` typo, a double slash in the
+  download URL and a missing dependency of the font list on the font stamp.
+- Not moved here: `release.sh`, `validate-release.py` and roundcube/bav
+  specifics (`toolkit-l10n`, php-scoper rule, custom `l10n` rule).
+
+## Reusable workflows
+
+`.github/workflows/{build-appstore,ci,release}.yml` are `workflow_call`
+workflows. The app id and version are read from `appinfo/info.xml`.
+
+```yaml
+# .github/workflows/ci.yml in the app
+on: [push, pull_request]
+jobs:
+  ci:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/ci.yml@main
+    with:
+      apt-packages: wget   # only if needed
+```
+
+```yaml
+# .github/workflows/release.yml in the app
+on:
+  push:
+    tags: ['v*']
+jobs:
+  release:
+    uses: rotdrop/nextcloud-app-build-system/.github/workflows/release.yml@main
+    secrets: inherit       # APP_PRIVATE_KEY, APP_PUBLIC_CRT, optional APPSTORE_TOKEN
+    permissions:
+      contents: write
+```
+
+Common inputs: `php-version`, `node-version`, `apt-packages`, `make-args`
+and `verify-script` (a script relative to the app root, run after the build
+with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has
+further inputs for the PHP extensions, `release`, `environment` and the
+signing server. `release.yml` can optionally publish to the app store
+(`publish-to-appstore`, default off).
+
+Note: the nested calls (`ci` and `release` call `build-appstore`) pin
+`@main` of this repository, because `uses:` cannot be computed; pin your own
+`@<tag>` on the outer call and adapt the inner ones when versioning.
+
+### Is a Nextcloud server tree needed in CI?
+
+No. The workflows build the app in its own checkout. The pdf_downloader CI
+built inside a server tree; the PHP-to-TypeScript generation
+(`dev-scripts/php-to-typescript.php`) was run there without a server
+(`libxml-xpath-perl`, and `memory_limit=1G` for php-scoper suffice) and
+produced `php-types.d.ts` and the module files. The only remaining use of a
+server is signing (`occ integrity:sign-app`, `integrity:check-app`); for
+that, `build-appstore.yml` checks out and installs a stock server only if
+`release` is true, and passes it as `OCC=`. files_archive and bav already
+build without a server. This was verified for pdf_downloader only; dokuwiki,
+redaxo and roundcube have to be confirmed when they are migrated. Not
+verified here: the vite build and the font download (sourceforge was
+unreachable from the sandbox), and the workflows themselves on GitHub.
+
 ## Scoped Composer configuration
 
 Configure `<scopednamespace>` in the application's `appinfo/info.xml`, for

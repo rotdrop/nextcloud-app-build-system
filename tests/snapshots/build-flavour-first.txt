@@ -1,0 +1,3 @@
+true build-flavour-build
+true dev-setup
+true npm-build

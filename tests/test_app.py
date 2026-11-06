@@ -159,14 +159,15 @@ class SnapshotTest(AppMakefileTestCase):
         self.configure(hooks="APP_BUILD_FLAVOUR_FIRST = 1\n")
         self.assert_snapshot("build-flavour-first", self.make("-n", "build", "MAKE=true").stdout)
 
-    def test_tcpdf_fonts_fragment(self):
+    def test_generic_hooks(self):
         self.configure(
-            hooks="APPSTORE_FILES_EXTRA = contrib\n",
-            rules="include $(DEV_LIB_DIR)/makefile/tcpdf-fonts.mk\n",
+            hooks="APP_REQUIRED_TOOLS = WGET\nAPPSTORE_FILES_EXTRA = contrib\n"
+                  "APP_MOSTLYCLEAN_FILES = stamp.extra\nAPPSTORE_COPY_HOOK = copy-extra\n",
+            rules="dev-setup: extra-setup\nextra-setup:\n\t@echo extra-setup\n"
+                  "copy-extra:\n\t@echo copy-extra\n.PHONY: extra-setup copy-extra\n",
         )
-        out = self.make("-n", "stamp.tcpdf-dejavu-fonts", "config/fonts-list.json",
-                        "appstore-copy-fonts", "WGET=wget").stdout
-        self.assert_snapshot("tcpdf-fonts", out)
+        out = self.make("-n", "extra-setup", "copy-extra", "WGET=wget").stdout
+        self.assert_snapshot("generic-hooks", out)
 
 
 class VariableTest(AppMakefileTestCase):
@@ -251,18 +252,15 @@ class ToolTest(AppMakefileTestCase):
         self.assertIn("WGET binary is needed", result.stderr)
         self.make("all", "WGET=wget")
 
-    def test_tcpdf_fonts_fragment_requires_wget(self):
-        self.configure(rules="include $(DEV_LIB_DIR)/makefile/tcpdf-fonts.mk\n")
-        result = self.make("all", "WGET=", success=False)
-        self.assertIn("WGET binary is needed", result.stderr)
-        self.make("all", "WGET=wget")
-
-    def test_tcpdf_fonts_fragment_hooks(self):
-        self.configure(rules="include $(DEV_LIB_DIR)/makefile/tcpdf-fonts.mk\n"
-                             "print-var:\n\t@echo '$(APP_MOSTLYCLEAN_FILES)|$(APPSTORE_COPY_HOOK)'\n")
-        out = self.make("print-var", "WGET=wget").stdout.strip()
-        self.assertIn("stamp.tcpdf-fonts", out)
-        self.assertTrue(out.endswith("|appstore-copy-fonts"), out)
+    def test_hooks_extend_dev_setup_mostlyclean_and_appstore(self):
+        self.configure(
+            hooks="APP_MOSTLYCLEAN_FILES = stamp.extra\nAPPSTORE_COPY_HOOK = copy-extra\n",
+            rules="dev-setup: extra-setup\nextra-setup:\n\t@echo extra-setup\n"
+                  "print-var:\n\t@echo '$(APP_MOSTLYCLEAN_FILES)|$(APPSTORE_COPY_HOOK)'\n"
+                  "print-deps:\n\t@echo '$^'\n",
+        )
+        self.assertEqual(self.make("print-var").stdout.strip(), "stamp.extra|copy-extra")
+        self.assertIn("echo extra-setup", self.make("-n", "dev-setup", "MAKE=true").stdout)
 
 
 class ReleaseTest(AppMakefileTestCase):

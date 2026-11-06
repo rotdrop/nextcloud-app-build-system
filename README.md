@@ -262,8 +262,11 @@ Apps not (yet) in the Nextcloud app store can opt out in `release.yml`:
 - `upload-to-appstore` (default `true`): uploads the signed archive to the
   app store. Pre-releases (version contains `-`) are uploaded with
   `nightly: true`, i.e. to the nightly channel, stable releases with
-  `nightly: false`. Nothing is uploaded for unsigned builds or, with a notice,
-  if the `APPSTORE_TOKEN` secret is absent. This replaces the former
+  `nightly: false`. Nothing is uploaded for unsigned builds or, with a
+  warning, if the `APPSTORE_TOKEN` secret is absent. The upload job runs in the
+  same `environment` as the build, so an environment secret works. It checks
+  that the download URL is public, then logs the HTTP status and response body
+  (`--fail-with-body`; 201 = created, 200 = existing release updated). This replaces the former
   opt-in `publish-to-appstore` input.
 - `build-appstore.yml` has the same `sign` input, effective with `release: true`.
   Without `release`, archives are always unsigned.

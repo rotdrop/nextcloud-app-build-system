@@ -83,6 +83,8 @@ class AppstoreUploadTest(unittest.TestCase):
         job = text[text.index("  publish-appstore:"):]
         condition = re.search(r"if: (.*)", job).group(1)
         self.assertEqual(condition, "inputs.upload-to-appstore && inputs.sign")
+        # the token is an environment secret, so the job needs the environment
+        self.assertIn("environment: ${{ inputs.environment }}", job.split("steps:")[0])
 
 
 if __name__ == "__main__":

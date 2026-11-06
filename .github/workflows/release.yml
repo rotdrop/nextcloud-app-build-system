@@ -144,8 +144,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$APPSTORE_TOKEN" ]; then
-            echo "::warning::APPSTORE_TOKEN is not available (secret missing, or not in the '${{ inputs.environment }}' environment), nothing was uploaded to the app store"
-            exit 0
+            msg="APPSTORE_TOKEN is not available (secret missing, or not in the '${{ inputs.environment }}' environment)"
+            if [ "$NIGHTLY" = true ]; then
+              echo "::warning::$msg, the pre-release was NOT uploaded to the app store"
+              exit 0
+            fi
+            echo "::error::$msg, cannot upload the stable release to the app store. Add the secret or call the workflow with upload-to-appstore: false"
+            exit 1
           fi
           archive=$(ls assets/*.tar.gz)
           signature=$(base64 -w0 "$archive.sig")

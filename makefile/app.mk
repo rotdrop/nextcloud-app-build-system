@@ -20,6 +20,7 @@
 #   APP_MOSTLYCLEAN_DEPS    additional prerequisites of mostlyclean
 #   APP_MOSTLYCLEAN_FILES   additional files removed by mostlyclean
 #   APPSTORE_FILES          files copied to the archive (replaces the default list)
+#   APPSTORE_FILES_OPTIONAL files copied only if they exist (default: templates)
 #   APPSTORE_FILES_EXTRA    further files copied to the archive
 #   APPSTORE_COPY_HOOK      make target(s) run after copying and before signing,
 #                           the signing directory is $(APPSTORE_SIGN_DIR)/$(APP_NAME)
@@ -128,7 +129,6 @@ APPSTORE_FILES ?=\
  js\
  img\
  l10n\
- templates\
  lib\
  vendor\
  $(SCOPED_VENDOR_DIR)\
@@ -136,6 +136,8 @@ APPSTORE_FILES ?=\
  CHANGELOG.md\
  COPYING\
  README.md
+# copied only if present, apps without e.g. a templates/ directory work as is
+APPSTORE_FILES_OPTIONAL ?= templates
 APPSTORE_FILES_EXTRA ?=
 
 # .htaccess is blacklisted by the app-store installer, so we have to remove it
@@ -279,7 +281,7 @@ appstore:
 	$(MAKE) build
 	$(COMPOSER) $(APPSTORE_COMPOSER_ARGS)
 	mkdir -p $(APPSTORE_SIGN_DIR)/$(APP_NAME)
-	$(RSYNC) -a -L $(APPSTORE_BLACKLISTED:%=--exclude '%') $(APPSTORE_FILES) $(APPSTORE_FILES_EXTRA) $(APPSTORE_SIGN_DIR)/$(APP_NAME)
+	$(RSYNC) -a -L $(APPSTORE_BLACKLISTED:%=--exclude '%') $(APPSTORE_FILES) $(wildcard $(APPSTORE_FILES_OPTIONAL)) $(APPSTORE_FILES_EXTRA) $(APPSTORE_SIGN_DIR)/$(APP_NAME)
 	$(if $(strip $(APPSTORE_COPY_HOOK)),$(MAKE) $(APPSTORE_COPY_HOOK))
 	mkdir -p $(BUILD_CERT_DIR)
 	$(SILENT)umask 077;\

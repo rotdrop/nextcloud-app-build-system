@@ -155,6 +155,22 @@ class SnapshotTest(AppMakefileTestCase):
         )
         self.assert_snapshot("php-checks", out)
 
+    def rsync_line(self):
+        out = self.make("-n", "appstore", "MAKE=true").stdout
+        return next(line for line in out.splitlines() if line.startswith("rsync"))
+
+    def test_appstore_without_templates_directory(self):
+        self.assertNotIn("templates", self.rsync_line().replace("./build", ""))
+
+    def test_appstore_with_templates_directory(self):
+        self.write("templates/page.php", "")
+        self.assertIn(" templates ", self.rsync_line())
+
+    def test_appstore_files_override_without_templates(self):
+        self.configure(hooks="APPSTORE_FILES = appinfo lib\n")
+        self.assertIn(" appinfo lib ", self.rsync_line())
+        self.assertNotIn("templates", self.rsync_line().replace("./build", ""))
+
     def test_flavour_first_build(self):
         self.configure(hooks="APP_BUILD_FLAVOUR_FIRST = 1\n")
         self.assert_snapshot("build-flavour-first", self.make("-n", "build", "MAKE=true").stdout)

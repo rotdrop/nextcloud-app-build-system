@@ -129,6 +129,8 @@ jobs:
     if: inputs.upload-to-appstore && inputs.sign
     needs: [validate, build, publish]
     runs-on: ubuntu-latest
+    # APPSTORE_TOKEN is typically an environment secret like the signing keys
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/download-artifact@v5
         with:
@@ -142,12 +144,26 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$APPSTORE_TOKEN" ]; then
-            echo "::notice::APPSTORE_TOKEN is not set, skipping the app store upload"
+            echo "::warning::APPSTORE_TOKEN is not available (secret missing, or not in the '${{ inputs.environment }}' environment), nothing was uploaded to the app store"
             exit 0
           fi
           archive=$(ls assets/*.tar.gz)
           signature=$(base64 -w0 "$archive.sig")
-          jq -n --arg download "$BASE_URL/$(basename "$archive")" --arg signature "$signature" --arg nightly "$NIGHTLY" \
+          download_url="$BASE_URL/$(basename "$archive")"
+          # the app store downloads the archive itself, so it must be public
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$download_url" --output "$RUNNER_TEMP/download.tar.gz"
+          cmp "$archive" "$RUNNER_TEMP/download.tar.gz"
+          jq -n --arg download "$download_url" --arg signature "$signature" --arg nightly "$NIGHTLY" \
             '{download: $download, signature: $signature, nightly: ($nightly == "true")}' \
-            | curl -fsS -X POST https://apps.nextcloud.com/api/v1/apps/releases \
-                -H "Authorization: Token $APPSTORE_TOKEN" -H 'Content-Type: application/json' -d @-
+            > "$RUNNER_TEMP/appstore-release.json"
+          status=$(curl -sS --fail-with-body -o "$RUNNER_TEMP/appstore-response.txt" -w '%{http_code}' \
+            -X POST https://apps.nextcloud.com/api/v1/apps/releases \
+            -H "Authorization: Token $APPSTORE_TOKEN" -H 'Content-Type: application/json' \
+            -d "@$RUNNER_TEMP/appstore-release.json") || {
+              echo "::error::App store upload failed (HTTP ${status:-unknown})"
+              cat "$RUNNER_TEMP/appstore-response.txt"; echo
+              exit 1
+            }
+          # 201: release created, 200: existing release updated
+          echo "App store upload of $download_url (nightly=$NIGHTLY) answered HTTP $status"
+          cat "$RUNNER_TEMP/appstore-response.txt"; echo

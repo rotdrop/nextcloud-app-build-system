@@ -342,6 +342,7 @@ class L10nMakefileTest(unittest.TestCase):
             "Makefile",
             f"APP_TOOLKIT_DIR := {self.app / 'custom-vendor' / TOOLKIT}\n"
             f"L10N_SOURCES_DIR := {self.app / 'custom-catalogues'}\n"
+            f"L10N_IGNORE := {self.app / 'custom ignore'}\n"
             "PHP := php -d memory_limit=128M\n"
             f"include {FRAGMENT}\n",
         )
@@ -352,7 +353,7 @@ class L10nMakefileTest(unittest.TestCase):
             '\t@test "$(APP_TOOLKIT_DIR)" = "$(CURDIR)/custom-vendor/'
             f'{TOOLKIT}"\n'
             '\t@test "$(PHP)" = "php -d memory_limit=128M"\n'
-            '\t@test "$(L10N_IGNORE)" = "$(CURDIR)/.l10nignore"\n'
+            f'\t@test "$(APP_TOOLKIT_L10N_IGNORE)" = "{self.app}/custom ignore"\n'
             '\t@mkdir -p "$(dir $(APP_TOOLKIT_L10N_DEST))"\n'
             '\t@printf toolkit > "$(APP_TOOLKIT_L10N_DEST)"\n',
         )

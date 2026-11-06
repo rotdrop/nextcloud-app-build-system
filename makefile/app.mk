@@ -345,7 +345,7 @@ mostlyclean: bundler-clean distclean $(APP_MOSTLYCLEAN_DEPS)
 	rm -f stamp.composer-core-versions
 	rm -f $(BUILD_FLAVOUR_FILE)
 	rm -rf .vite
-	rm -f package-lock.json
+	$(SILENT)git ls-files --error-unmatch package-lock.json > /dev/null 2>&1 || rm -f package-lock.json
 	rm -f *.html
 	rm -f stats.json
 	rm -f $(APP_MOSTLYCLEAN_FILES)

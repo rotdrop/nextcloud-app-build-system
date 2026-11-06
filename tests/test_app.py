@@ -320,6 +320,24 @@ class CleanTest(AppMakefileTestCase):
         self.make("realclean")
         self.assertFalse(self.exists("downloads"))
 
+    def git(self, *arguments):
+        subprocess.run(["git", "-C", str(self.app), *arguments], check=True, capture_output=True)
+
+    def test_mostlyclean_removes_untracked_package_lock(self):
+        self.git("init", "-q")
+        self.write("package-lock.json", "{}")
+        self.make("mostlyclean")
+        self.assertFalse(self.exists("package-lock.json"))
+
+    def test_mostlyclean_keeps_tracked_package_lock(self):
+        self.git("init", "-q")
+        self.write("package-lock.json", "{}")
+        self.git("add", "package-lock.json")
+        self.make("mostlyclean")
+        self.assertTrue(self.exists("package-lock.json"))
+        self.make("realclean")
+        self.assertTrue(self.exists("package-lock.json"))
+
     def test_mostlyclean_deps_hook(self):
         self.configure(
             hooks="APP_MOSTLYCLEAN_DEPS = hook-ran\n",

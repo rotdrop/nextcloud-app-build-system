@@ -326,14 +326,33 @@ bind-mounts the app checkout at `<server>/apps/<app id>` (a symlink does not
 work because the script resolves it with `realpath()`). `make appstore`, and
 in `ci` also the `realclean` job (whose `make build` generates the types too),
 run in that directory. The app is not enabled in that server, so
-`scripts/console-setup.php` registers the app's PSR-4 namespace (from
-`appinfo/info.xml`) with the server's autoloader; without it the app's classes
-are not found ("Class ... does not exist"). This is a no-op for enabled apps.
+`scripts/console-setup.php` registers it like a lazily loaded app, through
+the server's bootstrap `Coordinator::runLazyRegistration()`: this sets up the
+autoloading and runs the app's `register()` (service aliases such as
+interface bindings), which `php-to-typescript` needs to resolve the app's
+classes and dependency injection. The app info is read through the app manager
+because Nextcloud's libxml entity loader makes `simplexml_load_file()` fail.
+Without a Coordinator it falls back to the autoloader registration. This is a
+no-op for enabled apps. Verified with a real server and the real cafevdb-members
+tree; `occ app:enable` is not needed (it would require installation, the app's
+vendor directory and a database migration).
 Apps must therefore update their `dev-scripts/lib` submodule.
 The artifacts are written to the app checkout as usual.
 Signing reuses the same server. The default is `false` and then nothing
 changes. The action needs the `v1` tag to contain it, so it is not usable
 from a branch before the tag is moved.
+
+#### Composer and the GitHub API
+
+`ci`, `build-appstore` and `release` export `COMPOSER_AUTH` with the workflow
+token as a job-level environment variable, so every make step (and the
+`nextcloud-server` action) is authenticated. Apps with many `github.com` VCS
+repositories in their `composer.json` (a cold run of cafevdb-members needs
+about 500 API requests) can still exhaust the hourly API limit of the token,
+which Composer reports as "Could not authenticate against github.com". Such
+apps should pass `composer-use-github-api: false`: Composer then clones with
+git and makes no API requests (about 11 s instead of 2 min in a local test).
+The default is `true`, i.e. unchanged behaviour.
 
 ## Scoped Composer configuration
 

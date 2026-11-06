@@ -95,20 +95,23 @@ try {
     echo "The process control (PCNTL) extensions are required in case you want to interrupt long running commands - see http://php.net/manual/en/book.pcntl.php" . PHP_EOL;
   }
 
-  // Nextcloud only sets up the autoloading of enabled apps. A build
-  // checkout mounted into a fresh server tree (e.g. in CI) is not enabled,
-  // so register its namespace here; this is a no-op for enabled apps.
-  $appInfoFile = $appRoot . '/appinfo/info.xml';
-  $appInfo = is_file($appInfoFile) ? simplexml_load_file($appInfoFile) : false;
-  if ($appInfo !== false && !empty((string)$appInfo->id) && !empty((string)$appInfo->namespace)) {
-    $appId = (string)$appInfo->id;
-    $appNamespace = 'OCA\\' . (string)$appInfo->namespace;
-    $appManager = \OCP\Server::get(\OCP\App\IAppManager::class);
-    if (method_exists($appManager, 'registerAutoloading')) {
+  // Nextcloud only registers enabled apps. A build checkout mounted into a
+  // fresh server tree (e.g. in CI) is not enabled, so its classes would not
+  // autoload and the service aliases of its IBootstrap::register() would be
+  // missing. Register it like Nextcloud does for lazily loaded apps, without
+  // enabling it (no installation, no migrations). Enabled apps are left alone.
+  //
+  // Nextcloud installs a libxml entity loader that makes simplexml_load_file()
+  // fail, so let the app manager read info.xml.
+  $appManager = \OCP\Server::get(\OCP\App\IAppManager::class);
+  $appInfo = $appManager->getAppInfoByPath($appRoot . '/appinfo/info.xml');
+  if (!empty($appInfo['id']) && !$appManager->isEnabledForAnyone($appInfo['id'])) {
+    $appId = $appInfo['id'];
+    $coordinatorClass = '\\OC\\AppFramework\\Bootstrap\\Coordinator';
+    if (class_exists($coordinatorClass) && method_exists($coordinatorClass, 'runLazyRegistration')) {
+      \OCP\Server::get($coordinatorClass)->runLazyRegistration($appId);
+    } elseif (method_exists($appManager, 'registerAutoloading')) {
       $appManager->registerAutoloading($appId, $appRoot);
-    } elseif (is_dir($appRoot . '/lib')) {
-      \OC::$server->registerNamespace($appId, $appNamespace);
-      \OC::$composerAutoloader->addPsr4($appNamespace . '\\', $appRoot . '/lib/', true);
     }
   }
 

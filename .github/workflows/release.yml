@@ -26,6 +26,10 @@ on:
         description: Optional script run in the build, see build-appstore.yml
         type: string
         default: ''
+      composer-use-github-api:
+        description: Let Composer use the GitHub API for github.com VCS repositories. Set to false to make it clone with git instead, which avoids exhausting the API rate limit ("Could not authenticate against github.com") for apps with many VCS repositories in composer.json
+        type: boolean
+        default: true
       build-server:
         description: Build inside a Nextcloud server tree (the app is bind-mounted at <server>/apps/<app id>), for apps whose dev scripts bootstrap Nextcloud
         type: boolean
@@ -99,6 +103,7 @@ jobs:
       apt-packages: ${{ inputs.apt-packages }}
       make-args: ${{ inputs.make-args }}
       verify-script: ${{ inputs.verify-script }}
+      composer-use-github-api: ${{ inputs.composer-use-github-api }}
       build-server: ${{ inputs.build-server }}
       signing-server-repository: ${{ inputs.signing-server-repository }}
       signing-server-ref: ${{ inputs.signing-server-ref }}

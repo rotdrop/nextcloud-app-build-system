@@ -152,6 +152,26 @@ class BuildServerTest(unittest.TestCase):
             for ref in re.findall(r"uses: rotdrop/nextcloud-app-build-system/\S+", path.read_text()):
                 self.assertTrue(ref.endswith("@v1"), ref)
 
+    def test_composer_is_authenticated_for_every_step(self):
+        auth = "COMPOSER_AUTH: '{\"github-oauth\":{\"github.com\":\"${{ github.token }}\"}}'"
+        for path, job in ((WORKFLOW, "build"), (CI, "realclean")):
+            text = path.read_text()
+            m = re.search(r"\n  %s:\n(.*?)\n    steps:" % job, text, re.S)
+            self.assertIsNotNone(m, path.name)
+            self.assertIn("env:\n      " + auth, m.group(1), path.name)
+            self.assertEqual(text.count("COMPOSER_AUTH"), 1, path.name)
+
+    def test_github_api_for_composer_is_opt_out(self):
+        for path in (WORKFLOW, CI, RELEASE):
+            text = path.read_text()
+            m = re.search(r"\n      composer-use-github-api:\n(.*?)\n      [a-z-]+:\n", text, re.S)
+            self.assertIsNotNone(m, path.name)
+            self.assertIn("default: true", m.group(1), path.name)
+        for path in (CI, RELEASE):
+            self.assertIn("composer-use-github-api: ${{ inputs.composer-use-github-api }}", path.read_text())
+        for path in (WORKFLOW, CI):
+            self.assertIn("composer config --global use-github-api false", path.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

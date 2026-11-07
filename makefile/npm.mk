@@ -12,16 +12,21 @@ WEBPACK_DEPS = $(BUNDLER_DEPS)
 WEBPACK_TARGETS = $(BUNDLER_TARGETS)
 
 #@private
-package-lock.json: package.json $(BUNDLER_CONFIG) $(MAKEFILE_DEP) $(THIRD_PARTY_NPM_DEPS)
-	{ [ -d package-lock.json ] && [ test -d node_modules ]; } || $(NPM) install
-	$(NPM) update
-	touch package-lock.json
+package-lock.json:
+	@test -f "$@" || { echo "package-lock.json is required; run 'make update-package-lock' to create or update it." >&2; exit 1; }
 
 #@private
-node_modules:
-	$(NPM) install
-	touch package-lock.json
+node_modules: package.json package-lock.json
+	$(NPM) ci
 	touch node_modules
+
+# A requested update must finish before npm ci reads the lockfile. This also
+# orders a build requested alongside commit-package-lock.
+ifneq ($(filter update-package-lock commit-package-lock,$(MAKECMDGOALS)),)
+node_modules: update-package-lock
+package-lock.json: update-package-lock
+npm-dev npm-build: update-package-lock
+endif
 
 BUILD_FLAVOUR_FILE = $(ABSSRCDIR)/build-flavour
 PREV_BUILD_FLAVOUR = $(shell cat $(BUILD_FLAVOUR_FILE) 2> /dev/null || echo)
@@ -49,11 +54,13 @@ $(BUNDLER_TARGETS): $(BUILD_FLAVOUR_FILE) $(BUNDLER_DEPS)
 	$(NPM) run $(shell cat $(BUILD_FLAVOUR_FILE)) || { status=$$?; rm -f $(BUNDLER_TARGETS); exit $$status; }
 
 #@private
-npm-dev: build-flavour-dev $(BUNDLER_TARGETS)
+npm-dev: build-flavour-dev
+	$(MAKE) $(BUNDLER_TARGETS)
 .PHONY: npm-dev
 
 #@private
-npm-build: build-flavour-build $(BUNDLER_TARGETS)
+npm-build: build-flavour-build
+	$(MAKE) $(BUNDLER_TARGETS)
 .PHONY: npm-build
 
 #@@ Linting
@@ -76,8 +83,13 @@ stylelint-fix:
 	$(NPM) run stylelint:fix
 .PHONY: stylelint-
 
+#@@ Update dependencies in package-lock.json
+update-package-lock:
+	$(NPM) update --package-lock-only
+.PHONY: update-package-lock
+
 #@@ Commit and push a changed package-lock.json (no-op if unchanged)
-commit-package-lock:
+commit-package-lock: update-package-lock
 	$(SILENT)if git diff --quiet HEAD -- package-lock.json; then\
 	  echo "package-lock.json is unchanged, nothing to do.";\
 	else\

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -23,11 +24,13 @@ class NpmMakefileTest(unittest.TestCase):
             "npm",
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" >> npm.log\n"
-            "test \"$1\" = run || exit 99\n"
-            "mkdir -p js css\n"
-            "echo built > \"${OUTPUT:-js/asset-meta.json}\"\n"
-            "echo built > css/app.css\n"
-            "test -z \"$FAIL_BUILD\" || exit 23\n",
+            "case \"$1\" in\n"
+            "  ci) test -z \"$FAIL_CI\" || exit 24; mkdir -p node_modules ;;\n"
+            "  update) test \"$2\" = --package-lock-only || exit 98 ;;\n"
+            "  run) mkdir -p js css; echo built > \"${OUTPUT:-js/asset-meta.json}\"; "
+            "echo built > css/app.css; test -z \"$FAIL_BUILD\" || exit 23 ;;\n"
+            "  *) exit 99 ;;\n"
+            "esac\n",
         )
         (self.app / "npm").chmod(0o755)
         self.configure()
@@ -58,6 +61,7 @@ class NpmMakefileTest(unittest.TestCase):
         )
         # Keep dependency installation out of these build-only fixtures.
         (self.app / "package-lock.json").touch()
+        (self.app / "node_modules").mkdir(exist_ok=True)
         (self.app / "node_modules").touch()
 
     def make(self, *arguments, success=True, env=None):
@@ -94,6 +98,101 @@ class NpmMakefileTest(unittest.TestCase):
                 )
                 (self.app / "npm.log").unlink()
                 output.unlink()
+
+    def test_fresh_install_uses_lockfile_and_precedes_parallel_build(self):
+        for parallel in (False, True):
+            for target in ("npm-dev", "npm-build"):
+                with self.subTest(parallel=parallel, target=target):
+                    self.configure()
+                    shutil.rmtree(self.app / "node_modules")
+                    (self.app / "npm.log").unlink(missing_ok=True)
+                    lockfile = (self.app / "package-lock.json").read_bytes()
+
+                    arguments = (["-j4"] if parallel else []) + [target]
+                    self.make(*arguments)
+
+                    self.assertEqual(
+                        (self.app / "npm.log").read_text(),
+                        f"ci\nrun {'dev' if target == 'npm-dev' else 'build'}\n",
+                    )
+                    self.assertEqual(
+                        (self.app / "package-lock.json").read_bytes(), lockfile
+                    )
+
+    def test_stale_lockfile_triggers_locked_install(self):
+        modules = self.app / "node_modules"
+        timestamp = modules.stat().st_mtime_ns - 1_000_000_000
+        os.utime(modules, ns=(timestamp, timestamp))
+
+        self.make("npm-build")
+
+        self.assertEqual(
+            (self.app / "npm.log").read_text(), "ci\nrun build\n"
+        )
+
+    def test_missing_lockfile_fails_with_update_instruction(self):
+        (self.app / "package-lock.json").unlink()
+
+        result = self.make("npm-build", success=False)
+
+        self.assertIn("run 'make update-package-lock'", result.stderr)
+        self.assertFalse((self.app / "npm.log").exists())
+
+    def test_incompatible_lockfile_install_failure_stops_build(self):
+        shutil.rmtree(self.app / "node_modules")
+
+        self.make("npm-build", success=False, env={**os.environ, "FAIL_CI": "1"})
+
+        self.assertEqual((self.app / "npm.log").read_text(), "ci\n")
+
+    def test_build_configuration_change_does_not_update_dependencies(self):
+        self.write("vite.config.ts", "changed\n")
+
+        self.make("npm-build")
+
+        self.assertEqual((self.app / "npm.log").read_text(), "run build\n")
+
+    def test_update_target_is_explicit_and_does_not_run_during_build(self):
+        self.make("npm-build")
+        self.assertEqual((self.app / "npm.log").read_text(), "run build\n")
+
+        (self.app / "npm.log").unlink()
+        self.make("update-package-lock")
+
+        self.assertEqual(
+            (self.app / "npm.log").read_text(), "update --package-lock-only\n"
+        )
+
+    def test_parallel_update_finishes_before_install_and_bundle(self):
+        shutil.rmtree(self.app / "node_modules")
+
+        self.make("-j4", "update-package-lock", "npm-build")
+
+        self.assertEqual(
+            (self.app / "npm.log").read_text(),
+            "update --package-lock-only\nci\nrun build\n",
+        )
+
+    def test_commit_package_lock_is_noop_when_update_is_unchanged(self):
+        self.make_git("init", "-q")
+        self.make_git("config", "user.email", "test@example.com")
+        self.make_git("config", "user.name", "Test")
+        self.make_git("add", "package-lock.json")
+        self.make_git("commit", "-qm", "initial")
+        before = self.make_git("rev-list", "--count", "HEAD").stdout
+
+        self.make("commit-package-lock")
+
+        self.assertEqual(self.make_git("rev-list", "--count", "HEAD").stdout, before)
+        self.assertEqual(
+            (self.app / "npm.log").read_text(), "update --package-lock-only\n"
+        )
+
+    def make_git(self, *arguments):
+        return subprocess.run(
+            ["git", *arguments], cwd=self.app, text=True, capture_output=True,
+            check=True,
+        )
 
     def test_legacy_and_neutral_dependencies_are_combined(self):
         self.configure("BUNDLER_DEPS = source.js\nWEBPACK_DEPS = legacy.js\n")

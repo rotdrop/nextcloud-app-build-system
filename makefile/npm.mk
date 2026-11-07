@@ -76,6 +76,16 @@ stylelint-fix:
 	$(NPM) run stylelint:fix
 .PHONY: stylelint-
 
+#@@ Commit and push a changed package-lock.json (no-op if unchanged)
+commit-package-lock:
+	$(SILENT)if git diff --quiet HEAD -- package-lock.json; then\
+	  echo "package-lock.json is unchanged, nothing to do.";\
+	else\
+	  git commit -m "chore(deps): update package-lock.json" -- package-lock.json\
+	    && git push;\
+	fi
+.PHONY: commit-package-lock
+
 #@@ Removes bundler builds
 bundler-clean:
 	rm -rf ./js/*

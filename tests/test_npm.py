@@ -1,4 +1,6 @@
 import os
+
+os.environ["LC_ALL"] = "C"
 from pathlib import Path
 import shutil
 import subprocess

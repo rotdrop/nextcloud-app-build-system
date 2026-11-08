@@ -78,8 +78,8 @@ repositories:
 | App | GitHub repository |
 | --- | --- |
 | bav | [rotdrop/nextcloud-app-bav](https://github.com/rotdrop/nextcloud-app-bav) |
-| cafevdb | [rotdrop/cafevdb](https://github.com/rotdrop/cafevdb) |
-| cafevdbmembers | [rotdrop/cafevdb-members](https://github.com/rotdrop/cafevdb-members) |
+| cafevdb | [Camerata-Academica-Freibug-e-V/cafevdb](https://github.com/Camerata-Academica-Freibug-e-V/cafevdb) |
+| cafevdbmembers | [Camerata-Academica-Freibug-e-V/cafevdb-members](https://github.com/Camerata-Academica-Freibug-e-V/cafevdb-members) |
 | dokuwiki | [rotdrop/nextcloud-app-dokuwiki](https://github.com/rotdrop/nextcloud-app-dokuwiki) |
 | files_archive | [rotdrop/nextcloud-app-files-archive](https://github.com/rotdrop/nextcloud-app-files-archive) |
 | mail_roundcube | [rotdrop/nextcloud-roundcube](https://github.com/rotdrop/nextcloud-roundcube) |

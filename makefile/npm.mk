@@ -20,9 +20,8 @@ node_modules: package.json package-lock.json
 	$(NPM) ci
 	touch node_modules
 
-# A requested update must finish before npm ci reads the lockfile. This also
-# orders a build requested alongside commit-package-lock.
-ifneq ($(filter update-package-lock commit-package-lock,$(MAKECMDGOALS)),)
+# A requested update must finish before npm ci reads the lockfile.
+ifneq ($(filter update-package-lock,$(MAKECMDGOALS)),)
 node_modules: update-package-lock
 package-lock.json: update-package-lock
 npm-dev npm-build: update-package-lock
@@ -89,7 +88,7 @@ update-package-lock:
 .PHONY: update-package-lock
 
 #@@ Commit and push a changed package-lock.json (no-op if unchanged)
-commit-package-lock: update-package-lock
+commit-package-lock:
 	$(SILENT)if git diff --quiet HEAD -- package-lock.json; then\
 	  echo "package-lock.json is unchanged, nothing to do.";\
 	else\

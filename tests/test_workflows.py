@@ -9,51 +9,170 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/build-appstore.yml"
 
 
-def select_archive_script():
+def step_script(name):
     text = WORKFLOW.read_text()
-    match = re.search(r"- name: Sanity-check the archive\n.*?run: \|\n(.*?)\n\n", text, re.S)
-    assert match, "step not found"
-    lines = [line[10:] for line in match.group(1).splitlines()]
-    # keep only the archive selection, the JS check needs a real tarball
-    end = next(i for i, line in enumerate(lines) if line.startswith('echo "ARCHIVE='))
-    return "\n".join(lines[:end + 1])
+    match = re.search(
+        rf"      - name: {re.escape(name)}\n(.*?)(?=\n      - name: |\n  [a-z-]+:|\Z)",
+        text, re.S)
+    assert match, f"{name} step not found"
+    run = re.search(r"        run: \|\n(.*)", match.group(1), re.S)
+    assert run, f"{name} run script not found"
+    return "\n".join(line[10:] for line in run.group(1).rstrip().splitlines())
+
+
+def select_archive_script():
+    return step_script("Sanity-check the archive")
 
 
 class SelectArchiveTest(unittest.TestCase):
-    def run_step(self, files):
+    source_sha = "0123456789abcdef0123456789abcdef01234567"
+
+    def run_step(self, files, release=False):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp, "build/artifacts/appstore")
             directory.mkdir(parents=True)
             for name in files:
                 (directory / name).write_text("x")
             env_file = Path(tmp, "env")
+            output_file = Path(tmp, "output")
             result = subprocess.run(
                 ["bash", "-e", "-c", select_archive_script()], cwd=tmp, text=True,
                 capture_output=True,
                 env={**os.environ, "APP_ID": "app", "APP_VERSION": "1.0.0-rc1",
-                     "GITHUB_ENV": str(env_file)},
+                     "APP_ARTIFACT": f"app-1.0.0-rc1{'-ci-' + self.source_sha if not release else ''}",
+                     "IS_RELEASE": str(release).lower(), "CHECK_JS": "false",
+                     "GITHUB_ENV": str(env_file), "GITHUB_OUTPUT": str(output_file)},
             )
             written = env_file.read_text() if env_file.exists() else ""
-            return result, written
+            outputs = output_file.read_text() if output_file.exists() else ""
+            return result, written, outputs
 
     def test_signed_build_selects_only_the_archive(self):
-        result, written = self.run_step(["app-1.0.0-rc1.tar.gz", "app-1.0.0-rc1.tar.gz.sig"])
+        result, written, outputs = self.run_step(
+            ["app-1.0.0-rc1.tar.gz", "app-1.0.0-rc1.tar.gz.sig"], release=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(written, "ARCHIVE=build/artifacts/appstore/app-1.0.0-rc1.tar.gz\n")
+        self.assertEqual(outputs, "archive-filename=app-1.0.0-rc1.tar.gz\n")
 
     def test_unsigned_build(self):
-        result, written = self.run_step(["app-1.0.0-rc1.tar.gz"])
+        result, written, outputs = self.run_step(["app-1.0.0-rc1.tar.gz"], release=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("tar.gz\n", written)
+        self.assertEqual(outputs, "archive-filename=app-1.0.0-rc1.tar.gz\n")
+
+    def test_ci_archive_uses_full_checkout_sha(self):
+        result, written, outputs = self.run_step(["app-1.0.0-rc1.tar.gz"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(
+            written,
+            rf"^ARCHIVE=.*/build/artifacts/appstore/app-1.0.0-rc1-ci-{self.source_sha}\.tar\.gz\n$",
+        )
+        self.assertEqual(
+            outputs,
+            f"archive-filename=app-1.0.0-rc1-ci-{self.source_sha}.tar.gz\n",
+        )
+
+    def test_ci_archive_preserves_compression_extension(self):
+        result, _, outputs = self.run_step(["app-1.0.0-rc1.tar.xz"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            outputs, f"archive-filename=app-1.0.0-rc1-ci-{self.source_sha}.tar.xz\n")
 
     def test_no_archive_fails(self):
-        result, _ = self.run_step(["app-1.0.0-rc1.tar.gz.sig"])
+        result, _, _ = self.run_step(["app-1.0.0-rc1.tar.gz.sig"])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("exactly one archive", result.stdout + result.stderr)
 
     def test_two_archives_fail(self):
-        result, _ = self.run_step(["app-1.0.0-rc1.tar.gz", "app-1.0.0-rc1.tar.xz"])
+        result, _, _ = self.run_step(["app-1.0.0-rc1.tar.gz", "app-1.0.0-rc1.tar.xz"])
         self.assertNotEqual(result.returncode, 0)
+
+
+class BuildMetadataTest(unittest.TestCase):
+    source_sha = "0123456789abcdef0123456789abcdef01234567"
+
+    def run_step(self, release):
+        with tempfile.TemporaryDirectory() as tmp:
+            appinfo = Path(tmp, "appinfo")
+            appinfo.mkdir()
+            appinfo.joinpath("info.xml").write_text(
+                "<info><id>app</id><version>1.0.0</version></info>")
+            output_file = Path(tmp, "output")
+            result = subprocess.run(
+                ["bash", "-e", "-c", step_script("Read app id and version")],
+                cwd=tmp, text=True, capture_output=True,
+                env={
+                    **os.environ,
+                    "SOURCE_SHA": self.source_sha,
+                    "IS_RELEASE": str(release).lower(),
+                    "GITHUB_OUTPUT": str(output_file),
+                },
+            )
+            return result, output_file.read_text() if output_file.exists() else ""
+
+    def test_release_artifact_keeps_version_only_name(self):
+        result, outputs = self.run_step(release=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("artifact=app-1.0.0\n", outputs)
+
+    def test_ci_artifact_includes_full_source_sha(self):
+        result, outputs = self.run_step(release=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"artifact=app-1.0.0-ci-{self.source_sha}\n", outputs)
+
+
+class ArchiveProvenanceTest(unittest.TestCase):
+    def test_checksum_manifest_and_summary_are_collected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp, "app-1.0.0-ci-0123456789abcdef.tar.gz")
+            archive.write_text("archive")
+            summary = Path(tmp, "summary")
+            result = subprocess.run(
+                ["bash", "-e", "-c", step_script("Collect release files")],
+                cwd=tmp, text=True, capture_output=True,
+                env={
+                    **os.environ,
+                    "ARCHIVE": str(archive),
+                    "APP_ID": "app",
+                    "APP_VERSION": "1.0.0",
+                    "APP_ARTIFACT": archive.name.removesuffix(".tar.gz"),
+                    "SOURCE_SHA": "0123456789abcdef0123456789abcdef01234567",
+                    "SOURCE_REF": "refs/pull/42/merge",
+                    "RUNNER_TEMP": tmp,
+                    "GITHUB_SERVER_URL": "https://github.com",
+                    "GITHUB_REPOSITORY": "owner/repo",
+                    "GITHUB_RUN_ID": "123",
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            out = Path(tmp, "out")
+            self.assertTrue((out / f"{archive.name}.sha256").is_file())
+            provenance = (out / "provenance.json").read_text()
+            self.assertIn('"source_sha": "0123456789abcdef0123456789abcdef01234567"', provenance)
+            self.assertIn('"source_ref": "refs/pull/42/merge"', provenance)
+            self.assertIn('"archive_filename": "app-1.0.0-ci-0123456789abcdef.tar.gz"', provenance)
+            self.assertIn("SHA-256:", summary.read_text())
+
+
+class WorkflowOutputsTest(unittest.TestCase):
+    def test_build_uses_checkout_sha_and_exposes_provenance(self):
+        text = WORKFLOW.read_text()
+        self.assertIn('echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"', text)
+        self.assertIn('echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"', text)
+        for output in ("source-sha", "source-ref", "artifact", "archive-filename"):
+            self.assertRegex(text, rf"(?m)^      {re.escape(output)}:")
+            self.assertIn(f"value: ${{{{ jobs.build.outputs.{output} }}}}", text)
+
+    def test_ci_forwards_archive_filename_output(self):
+        text = CI.read_text()
+        self.assertIn("archive-filename:", text)
+        self.assertIn("value: ${{ jobs.build.outputs.archive-filename }}", text)
+
+    def test_release_appstore_uses_exact_archive_filename(self):
+        text = RELEASE.read_text()
+        self.assertIn("ARCHIVE_FILENAME: ${{ needs.build.outputs.archive-filename }}", text)
+        self.assertIn('archive="assets/$ARCHIVE_FILENAME"', text)
 
 
 RELEASE = ROOT / ".github/workflows/release.yml"

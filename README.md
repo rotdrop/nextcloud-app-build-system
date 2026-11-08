@@ -264,6 +264,28 @@ with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has
 further inputs for the PHP extensions, `release`, `environment` and the
 signing server.
 
+### Build archive names and checkout provenance
+
+The shared build workflow keeps the version-only archive and artifact names for
+release builds. CI builds instead append `-ci-<full-source-sha>` to the artifact
+and archive names; the version in `appinfo/info.xml` is unchanged. The uploaded
+artifact includes the archive checksum (`<archive>.sha256`) and a
+`provenance.json` manifest with the app id/version, checked-out source SHA/ref,
+workflow run URL, and exact archive filename. The build job summary records the
+same provenance and checksum.
+
+The `build-appstore` reusable workflow exposes `source-sha`, `source-ref`,
+`artifact`, and `archive-filename` as outputs. The `ci` wrapper forwards these
+outputs, so callers should use `archive-filename` rather than reconstructing
+the name from app metadata.
+
+Checkout provenance describes the code actually built, not the shared workflow
+reference (`@v1`). On pushes, the default checkout is the triggering commit.
+On pull requests, the default checkout is GitHub's synthetic merge commit
+(`refs/pull/<number>/merge`), not the PR branch head. The recorded SHA is read
+from `git rev-parse HEAD`; `source-ref` is the event ref and therefore identifies
+the merge ref for pull requests.
+
 ### Opting out of signing and app store upload
 
 Apps not (yet) in the Nextcloud app store can opt out in `release.yml`:

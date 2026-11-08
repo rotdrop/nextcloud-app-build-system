@@ -50,6 +50,19 @@ on:
         description: Branch or tag of the Nextcloud server, e.g. stable35
         type: string
         default: master
+    outputs:
+      source-sha:
+        description: Full SHA of the app checkout used for the build
+        value: ${{ jobs.build.outputs.source-sha }}
+      source-ref:
+        description: GitHub ref associated with the app checkout
+        value: ${{ jobs.build.outputs.source-ref }}
+      artifact:
+        description: Name of the uploaded archive artifact
+        value: ${{ jobs.build.outputs.artifact }}
+      archive-filename:
+        description: Exact filename of the uploaded app archive
+        value: ${{ jobs.build.outputs.archive-filename }}
 
 permissions:
   contents: read

@@ -134,6 +134,8 @@ jobs:
         working-directory: ${{ inputs.build-server && steps.server.outputs.app-dir || github.workspace }}
         run: |
           check() {
+            # realclean removes a tracked package-lock.json on purpose
+            git checkout -- package-lock.json 2> /dev/null || true
             if [ -n "$(git status --porcelain --ignored)" ]; then
               git status --porcelain --ignored
               echo "::error::$1 left files behind"

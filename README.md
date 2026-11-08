@@ -37,8 +37,11 @@ fails if the lockfile is incompatible with `package.json`; create or update it
 explicitly with `make update-package-lock`, which runs
 `npm update --package-lock-only`. `make commit-package-lock` commits a modified
 `package-lock.json` (only that file) with the message
-`chore(deps): update package-lock.json` and pushes it; it does nothing if the
-lockfile is unchanged. Run `make update-package-lock` separately before
+`chore(deps): update package-lock.json` on the branch
+`chore/update-package-lock` (override with `PACKAGE_LOCK_BRANCH`), pushes that
+branch and opens a pull request against the current branch with `gh`, then
+switches back to the original branch; it does nothing if the lockfile is
+unchanged. Run `make update-package-lock` separately before
 `make commit-package-lock` when you intend to update dependencies.
 
 `make mostlyclean` preserves `package-lock.json`; `make realclean` removes it,

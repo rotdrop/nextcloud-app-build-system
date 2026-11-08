@@ -67,7 +67,7 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - name: Install and lint
         run: |
-          npm install
+          npm ci
           npm run lint
 
   php-lint:
@@ -135,7 +135,9 @@ jobs:
         run: |
           check() {
             # realclean removes a tracked package-lock.json on purpose
-            git checkout -- package-lock.json 2> /dev/null || true
+            if git ls-files --error-unmatch -- package-lock.json > /dev/null 2>&1; then
+              git restore -- package-lock.json
+            fi
             if [ -n "$(git status --porcelain --ignored)" ]; then
               git status --porcelain --ignored
               echo "::error::$1 left files behind"
@@ -143,6 +145,7 @@ jobs:
             fi
           }
           make realclean
+          check "realclean"
           make realclean
           check "realclean"
           make build

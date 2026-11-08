@@ -11,6 +11,7 @@ import os
 # Tools parsed or asserted on by the tests must not emit localized output.
 os.environ["LC_ALL"] = "C"
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -451,6 +452,95 @@ class CleanTest(AppMakefileTestCase):
     def test_realclean_is_idempotent(self):
         self.make("realclean")
         self.make("realclean")
+
+
+class CiRealcleanTest(AppMakefileTestCase):
+    def setUp(self):
+        super().setUp()
+        self.configure(
+            hooks=f"XPATH = {self.app / 'xpath'}\n"
+                  "override BUNDLER_DEPS = $(NPM_INIT_DEPS) node_modules\n",
+        )
+        self.write(
+            "npm",
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> \"$NPM_LOG\"\n"
+            "case \"$*\" in\n"
+            "  ci) cmp package-lock.json \"$EXPECTED_LOCK\" || exit 1; "
+            "mkdir -p node_modules ;;\n"
+            "  'run build') mkdir -p js css; echo built > js/asset-meta.json ;;\n"
+            "  *) exit 99 ;;\n"
+            "esac\n",
+        )
+        (self.app / "npm").chmod(0o755)
+        self.git("init", "-q")
+        self.git("config", "user.email", "test@example.com")
+        self.git("config", "user.name", "Test")
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture")
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        match = re.search(
+            r"- name: realclean leaves a pristine tree, also after a build\n"
+            r".*?run: \|\n(.*?)\n\n", workflow, re.S,
+        )
+        self.assertIsNotNone(match)
+        self.script = "\n".join(line[10:] for line in match.group(1).splitlines())
+        # Exercise the npm build and cleanup without Composer or type generation.
+        self.script = self.script.replace("make build", "make -o dev-setup build")
+
+    def git(self, *arguments):
+        subprocess.run(["git", "-C", str(self.app), *arguments], check=True, capture_output=True)
+
+    def run_step(self, script=None):
+        return subprocess.run(
+            ["bash", "-e", "-o", "pipefail", "-c", script or self.script],
+            cwd=self.app, env={**self.env, "PATH": f"{self.app}:{os.environ['PATH']}"},
+            text=True, capture_output=True,
+        )
+
+    def test_tracked_lockfile_cleanup_and_locked_rebuild(self):
+        self.write("package-lock.json", '{"lockfileVersion": 3}\n')
+        lockfile = (self.app / "package-lock.json").read_bytes()
+        self.git("add", "package-lock.json")
+        self.git("commit", "-qm", "lock dependencies")
+        for _ in range(2):
+            self.make("realclean")
+            self.assertFalse((self.app / "package-lock.json").exists())
+            self.git("restore", "--", "package-lock.json")
+            self.assertEqual((self.app / "package-lock.json").read_bytes(), lockfile)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            expected = Path(tmp, "lock")
+            expected.write_bytes(lockfile)
+            log = Path(tmp, "npm.log")
+            self.env.update(EXPECTED_LOCK=str(expected), NPM_LOG=str(log))
+            result = self.run_step()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(log.read_text(), "ci\nrun build\n")
+
+        self.assertEqual((self.app / "package-lock.json").read_bytes(), lockfile)
+        self.assertFalse((self.app / "node_modules").exists())
+        self.assertFalse((self.app / "js/asset-meta.json").exists())
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain", "--ignored"], cwd=self.app, text=True,
+        )
+        self.assertEqual(status, "")
+
+    def test_untracked_lockfile_is_not_restored(self):
+        self.write("package-lock.json", "{}\n")
+        result = self.run_step(self.script.split("make -o dev-setup build")[0])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.app / "package-lock.json").exists())
+
+    def test_ignored_artifacts_still_fail_cleanliness_check(self):
+        self.write(".gitignore", "leftover\n")
+        self.git("add", ".gitignore")
+        self.git("commit", "-qm", "ignore fixture artifact")
+        self.write("leftover", "artifact\n")
+        result = self.run_step()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("!! leftover", result.stdout)
+        self.assertIn("::error::realclean left files behind", result.stdout)
 
 
 if __name__ == "__main__":

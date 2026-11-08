@@ -35,10 +35,11 @@ Routine builds install dependencies with `npm ci` from `package-lock.json`;
 they never update dependencies. A missing lockfile is an error, and `npm ci`
 fails if the lockfile is incompatible with `package.json`; create or update it
 explicitly with `make update-package-lock`, which runs
-`npm update --package-lock-only`. `make commit-package-lock` runs that update,
-then commits a modified `package-lock.json` (only that file) with the message
+`npm update --package-lock-only`. `make commit-package-lock` commits a modified
+`package-lock.json` (only that file) with the message
 `chore(deps): update package-lock.json` and pushes it; it does nothing if the
-lockfile is unchanged.
+lockfile is unchanged. Run `make update-package-lock` separately before
+`make commit-package-lock` when you intend to update dependencies.
 
 The install is complete before the `dev` or `build` npm script runs. Consumers
 that need to patch installed packages should use fail-fast npm `predev` and
@@ -669,4 +670,3 @@ which also works for annotated tags. The commit message is
 (detached application HEAD, dirty submodule, submodule commits not contained
 in the tag); it never force-pushes. The shared logic lives in
 `scripts/dev-lib-sync.sh`.
-

@@ -173,7 +173,7 @@ class NpmMakefileTest(unittest.TestCase):
             "update --package-lock-only\nci\nrun build\n",
         )
 
-    def test_commit_package_lock_is_noop_when_update_is_unchanged(self):
+    def test_commit_package_lock_is_noop_without_updating_lockfile(self):
         self.make_git("init", "-q")
         self.make_git("config", "user.email", "test@example.com")
         self.make_git("config", "user.name", "Test")
@@ -184,9 +184,7 @@ class NpmMakefileTest(unittest.TestCase):
         self.make("commit-package-lock")
 
         self.assertEqual(self.make_git("rev-list", "--count", "HEAD").stdout, before)
-        self.assertEqual(
-            (self.app / "npm.log").read_text(), "update --package-lock-only\n"
-        )
+        self.assertFalse((self.app / "npm.log").exists())
 
     def make_git(self, *arguments):
         return subprocess.run(

@@ -87,13 +87,22 @@ update-package-lock:
 	$(NPM) update --package-lock-only
 .PHONY: update-package-lock
 
-#@@ Commit and push a changed package-lock.json (no-op if unchanged)
+PACKAGE_LOCK_BRANCH ?= chore/update-package-lock
+
+#@@ Open a pull request for a changed package-lock.json (no-op if unchanged)
 commit-package-lock:
 	$(SILENT)if git diff --quiet HEAD -- package-lock.json; then\
 	  echo "package-lock.json is unchanged, nothing to do.";\
 	else\
-	  git commit -m "chore(deps): update package-lock.json" -- package-lock.json\
-	    && git push;\
+	  base=$$(git rev-parse --abbrev-ref HEAD) && \
+	  git checkout -B "$(PACKAGE_LOCK_BRANCH)" && \
+	  git commit -m "chore(deps): update package-lock.json" -- package-lock.json && \
+	  git push --force-with-lease -u origin "$(PACKAGE_LOCK_BRANCH)" && \
+	  { gh pr create --base "$$base" --head "$(PACKAGE_LOCK_BRANCH)" \
+	      --title "chore(deps): update package-lock.json" \
+	      --body "Automated update of package-lock.json." \
+	    || echo "A pull request for $(PACKAGE_LOCK_BRANCH) may already exist."; }; \
+	  status=$$?; git checkout "$$base"; exit $$status;\
 	fi
 .PHONY: commit-package-lock
 

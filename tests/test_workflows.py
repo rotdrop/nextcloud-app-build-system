@@ -113,6 +113,14 @@ ACTION = ROOT / ".github/actions/nextcloud-server/action.yml"
 CI = ROOT / ".github/workflows/ci.yml"
 
 
+class EslintTest(unittest.TestCase):
+    def test_install_uses_locked_dependencies(self):
+        job = CI.read_text().split("  eslint:\n", 1)[1].split("  php-lint:\n", 1)[0]
+        self.assertIn("npm ci\n", job)
+        self.assertNotIn("npm install", job)
+        self.assertLess(job.index("npm ci\n"), job.index("npm run lint"))
+
+
 class BuildServerTest(unittest.TestCase):
     def test_build_server_is_opt_in_everywhere(self):
         for path in (WORKFLOW, CI, RELEASE):

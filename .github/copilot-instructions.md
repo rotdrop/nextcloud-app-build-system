@@ -6,8 +6,8 @@ guessing a repository name or searching the account's repositories:
 | App name | GitHub repository |
 | --- | --- |
 | bav | rotdrop/nextcloud-app-bav |
-| cafevdb | rotdrop/cafevdb |
-| cafevdbmembers | rotdrop/cafevdb-members |
+| cafevdb | Camerata-Academica-Freibug-e-V/cafevdb |
+| cafevdbmembers | Camerata-Academica-Freibug-e-V/cafevdb-members |
 | dokuwiki | rotdrop/nextcloud-app-dokuwiki |
 | files_archive | rotdrop/nextcloud-app-files-archive |
 | mail_roundcube | rotdrop/nextcloud-roundcube |

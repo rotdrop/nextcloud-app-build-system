@@ -161,6 +161,7 @@ jobs:
           APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
           NIGHTLY: ${{ needs.validate.outputs.prerelease }}
           BASE_URL: ${{ inputs.download-base-url || format('{0}/{1}/releases/download/{2}', github.server_url, github.repository, github.ref_name) }}
+          ARCHIVE_FILENAME: ${{ needs.build.outputs.archive-filename }}
         run: |
           set -euo pipefail
           if [ -z "$APPSTORE_TOKEN" ]; then
@@ -172,7 +173,8 @@ jobs:
             echo "::error::$msg, cannot upload the stable release to the app store. Add the secret or call the workflow with upload-to-appstore: false"
             exit 1
           fi
-          archive=$(ls assets/*.tar.gz)
+          archive="assets/$ARCHIVE_FILENAME"
+          test -f "$archive" || { echo "::error::Archive $ARCHIVE_FILENAME is missing"; exit 1; }
           signature=$(base64 -w0 "$archive.sig")
           download_url="$BASE_URL/$(basename "$archive")"
           # the app store downloads the archive itself, so it must be public

@@ -97,7 +97,16 @@ on:
         value: ${{ jobs.build.outputs.version }}
       artifact:
         description: Name of the uploaded artifact
-        value: ${{ jobs.build.outputs.id }}-${{ jobs.build.outputs.version }}
+        value: ${{ jobs.build.outputs.artifact }}
+      archive-filename:
+        description: Exact filename of the uploaded app archive
+        value: ${{ jobs.build.outputs.archive-filename }}
+      source-sha:
+        description: Full SHA of the app checkout used for the build
+        value: ${{ jobs.build.outputs.source-sha }}
+      source-ref:
+        description: GitHub ref associated with the app checkout
+        value: ${{ jobs.build.outputs.source-ref }}
 
 permissions:
   contents: read
@@ -112,6 +121,10 @@ jobs:
     outputs:
       id: ${{ steps.meta.outputs.id }}
       version: ${{ steps.meta.outputs.version }}
+      artifact: ${{ steps.meta.outputs.artifact }}
+      archive-filename: ${{ steps.sanity.outputs.archive-filename }}
+      source-sha: ${{ steps.source.outputs.sha }}
+      source-ref: ${{ steps.source.outputs.ref }}
     steps:
       - name: Use HTTPS for submodules
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
@@ -122,6 +135,13 @@ jobs:
           # dev-scripts/lib and dev-scripts/MakeHelp are git submodules.
           submodules: recursive
           persist-credentials: false
+
+      - name: Record app checkout provenance
+        id: source
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
 
       - name: Install build utilities
         env:
@@ -151,12 +171,19 @@ jobs:
 
       - name: Read app id and version
         id: meta
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          IS_RELEASE: ${{ inputs.release }}
         run: |
+          set -euo pipefail
           id=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->id;')
           version=$(php -r 'echo (string)simplexml_load_file("appinfo/info.xml")->version;')
           test -n "$id" && test -n "$version" || { echo "::error::appinfo/info.xml lacks id or version"; exit 1; }
+          artifact="$id-$version"
+          if [ "$IS_RELEASE" != true ]; then artifact="$artifact-ci-$SOURCE_SHA"; fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
       - name: Set up Nextcloud server
         id: server
@@ -197,11 +224,15 @@ jobs:
           fi
 
       - name: Sanity-check the archive
+        id: sanity
         env:
           APP_ID: ${{ steps.meta.outputs.id }}
           APP_VERSION: ${{ steps.meta.outputs.version }}
+          APP_ARTIFACT: ${{ steps.meta.outputs.artifact }}
+          IS_RELEASE: ${{ inputs.release }}
           CHECK_JS: ${{ inputs.check-js-bundles }}
         run: |
+          set -euo pipefail
           # the glob also matches the detached signature, so skip it
           archives=()
           for file in build/artifacts/appstore/"$APP_ID-$APP_VERSION".tar.*; do
@@ -209,7 +240,15 @@ jobs:
           done
           [ "${#archives[@]}" -eq 1 ] || { echo "::error::Expected exactly one archive, found ${#archives[@]}: ${archives[*]}"; exit 1; }
           archive=${archives[0]}
+          if [ "$IS_RELEASE" != true ]; then
+            filename="$APP_ARTIFACT.tar.${archive##*.tar.}"
+            qualified="$PWD/build/artifacts/appstore/$filename"
+            mv "$archive" "$qualified"
+            if [ -f "$archive.sig" ]; then mv "$archive.sig" "$qualified.sig"; fi
+            archive=$qualified
+          fi
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+          echo "archive-filename=$(basename "$archive")" >> "$GITHUB_OUTPUT"
           if [ "$CHECK_JS" = true ]; then
             count=$(tar -taf "$archive" | grep -Ec "^$APP_ID/js/.*\.m?js$" || true)
             echo "JS bundles in archive: $count"
@@ -248,17 +287,49 @@ jobs:
         env:
           APP_ID: ${{ steps.meta.outputs.id }}
           APP_VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_REF: ${{ steps.source.outputs.ref }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/out"
-          name="$APP_ID-$APP_VERSION.tar.${ARCHIVE##*.tar.}"
+          name=$(basename "$ARCHIVE")
           cp "$ARCHIVE" "$RUNNER_TEMP/out/$name"
           if [ -f "$ARCHIVE.sig" ]; then cp "$ARCHIVE.sig" "$RUNNER_TEMP/out/$name.sig"; fi
           (cd "$RUNNER_TEMP/out" && sha256sum "$name" > "$name.sha256")
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          provenance = {
+              "app_id": os.environ["APP_ID"],
+              "app_version": os.environ["APP_VERSION"],
+              "source_sha": os.environ["SOURCE_SHA"],
+              "source_ref": os.environ["SOURCE_REF"],
+              "workflow_run": (
+                  f'{os.environ["GITHUB_SERVER_URL"]}/{os.environ["GITHUB_REPOSITORY"]}'
+                  f'/actions/runs/{os.environ["GITHUB_RUN_ID"]}'
+              ),
+              "archive_filename": os.path.basename(os.environ["ARCHIVE"]),
+          }
+          out = Path(os.environ["RUNNER_TEMP"]) / "out"
+          (out / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+          PY
+          checksum=$(cut -d' ' -f1 "$RUNNER_TEMP/out/$name.sha256")
+          {
+            echo "## App archive provenance"
+            echo
+            echo "- App: \`$APP_ID@$APP_VERSION\`"
+            echo "- Source SHA: \`$SOURCE_SHA\`"
+            echo "- Source ref: \`$SOURCE_REF\`"
+            echo "- Archive: \`$name\`"
+            echo "- SHA-256: \`$checksum\`"
+            echo "- Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload as workflow artifact
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ steps.meta.outputs.id }}-${{ steps.meta.outputs.version }}
+          name: ${{ steps.meta.outputs.artifact }}
           path: ${{ runner.temp }}/out/*
           if-no-files-found: error

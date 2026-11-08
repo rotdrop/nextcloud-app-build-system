@@ -41,6 +41,11 @@ explicitly with `make update-package-lock`, which runs
 lockfile is unchanged. Run `make update-package-lock` separately before
 `make commit-package-lock` when you intend to update dependencies.
 
+`make mostlyclean` preserves `package-lock.json`; `make realclean` removes it,
+even when tracked in Git. After `realclean`, restore the lockfile from Git for
+a reproducible build, or run `make update-package-lock` to resolve dependencies
+again.
+
 The install is complete before the `dev` or `build` npm script runs. Consumers
 that need to patch installed packages should use fail-fast npm `predev` and
 `prebuild` lifecycle hooks, which run immediately before those scripts.

@@ -12,7 +12,5 @@ rm -f vendor-bin/**/patches.lock.json
 rm -f stamp.composer-core-versions
 rm -f @APP@/build-flavour
 rm -rf .vite
-git ls-files --error-unmatch package-lock.json > /dev/null 2>&1 || rm -f package-lock.json
 rm -f *.html
 rm -f stats.json
-rm -f 

@@ -401,21 +401,25 @@ class CleanTest(AppMakefileTestCase):
         self.assertTrue(self.exists("composer.lock"))
         self.make("mostlyclean")
         for name in ("js/x.js", "css/x.css", "composer.lock", "composer.json",
-                     "package-lock.json", "build-flavour", ".vite", "stats.json",
+                     "build-flavour", ".vite", "stats.json",
                      "report.html", "extra-generated"):
             self.assertFalse(self.exists(name), name)
+        self.assertTrue(self.exists("package-lock.json"))
         self.assertTrue(self.exists("downloads/x"))
         self.assertTrue(self.exists("src/main.ts"))
         self.make("realclean")
         self.assertFalse(self.exists("downloads"))
+        self.assertFalse(self.exists("package-lock.json"))
 
     def git(self, *arguments):
         subprocess.run(["git", "-C", str(self.app), *arguments], check=True, capture_output=True)
 
-    def test_mostlyclean_removes_untracked_package_lock(self):
+    def test_mostlyclean_keeps_untracked_package_lock(self):
         self.git("init", "-q")
         self.write("package-lock.json", "{}")
         self.make("mostlyclean")
+        self.assertTrue(self.exists("package-lock.json"))
+        self.make("realclean")
         self.assertFalse(self.exists("package-lock.json"))
 
     def test_mostlyclean_keeps_tracked_package_lock(self):
@@ -425,7 +429,13 @@ class CleanTest(AppMakefileTestCase):
         self.make("mostlyclean")
         self.assertTrue(self.exists("package-lock.json"))
         self.make("realclean")
-        self.assertTrue(self.exists("package-lock.json"))
+        self.assertFalse(self.exists("package-lock.json"))
+
+    def test_cleanup_omits_empty_optional_file_removal(self):
+        for target in ("mostlyclean", "realclean"):
+            with self.subTest(target=target):
+                result = self.make(target)
+                self.assertNotIn("rm -f", [line.strip() for line in result.stdout.splitlines()])
 
     def test_mostlyclean_deps_hook(self):
         self.configure(

@@ -7,6 +7,9 @@ intended change with:
     UPDATE_SNAPSHOTS=1 python3 -B -m unittest tests.test_app
 """
 import os
+
+# Tools parsed or asserted on by the tests must not emit localized output.
+os.environ["LC_ALL"] = "C"
 from pathlib import Path
 import shutil
 import subprocess

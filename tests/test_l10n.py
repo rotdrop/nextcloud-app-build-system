@@ -1,5 +1,7 @@
 import json
 import os
+
+os.environ["LC_ALL"] = "C"
 from pathlib import Path
 import subprocess
 import tempfile

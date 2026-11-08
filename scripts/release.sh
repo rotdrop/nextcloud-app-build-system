@@ -32,7 +32,7 @@ branch=${RELEASE_BRANCH:-}
 if [[ -z $branch ]]; then
   branch=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
   branch=${branch#"$remote"/}
-  [[ -n $branch ]] || branch=$(git remote show "$remote" | sed -n 's/^ *HEAD branch: //p')
+  [[ -n $branch ]] || branch=$(LC_ALL=C git remote show "$remote" | sed -n 's/^ *HEAD branch: //p')
 fi
 if [[ $(git branch --show-current) != "$branch" ]]; then
   echo "Release must be run from the $branch branch." >&2

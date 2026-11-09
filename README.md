@@ -119,6 +119,26 @@ header of `app.mk`: `APP_DEV_SETUP_DEPS`, `APP_REQUIRED_TOOLS`,
 `wget` is not required by default; apps needing it set
 `APP_REQUIRED_TOOLS = WGET` before the include.
 
+### Application test suites
+
+`make test` runs `unit-tests`, `integration-tests`, and `frontend-tests`.
+Missing `phpunit.xml` or `phpunit.integration.xml` configurations cause the
+corresponding PHP suite to be skipped with a warning. Missing `package.json`
+or its `test` script similarly skips frontend tests without installing npm
+dependencies. Configured suites still fail on test failures, missing runners,
+or invalid configurations; empty configured suites are not treated as absent.
+
+Frontend tests use `npm run test -- --run`, running Vitest once rather than
+entering watch mode. This matches the `test` scripts in cafevdb and
+cafevdbmembers on their current default branches. Set `FRONTEND_TEST_SCRIPT`
+to use another npm script and `FRONTEND_TEST_ARGS` to override the appended
+arguments (for example, empty for a non-Vitest runner). `NODE` defaults to
+`node` and can be overridden for the package-script check. Dependencies use
+the existing `node_modules` target and locked `npm ci` installation; tests
+do not build or clean bundler assets. Each suite target can also be run
+individually. The opt-in coverage/reporting targets in `makefile/phpunit.mk`
+retain their existing behavior.
+
 ### Example: app-specific build steps via hooks
 
 App-specific pipelines stay in the app. This is the pdf_downloader

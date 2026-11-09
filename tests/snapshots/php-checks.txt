@@ -1,6 +1,26 @@
 @APP@/vendor-bin/phpcs/vendor/bin/phpcs -s --runtime-set ignore_warnings_on_exit 1 --report=emacs --standard=./.phpcs.xml lib appinfo
 @APP@/vendor-bin/phpcs/vendor/bin/phpcs -n --standard=./.phpcs.xml lib appinfo | grep FILE: | awk '{ print $2; }'
 @APP@/vendor-bin/phpmd/vendor/bin/phpmd --format text --ruleset ./.phpmd.xml lib appinfo
-@APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.xml
-@APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.integration.xml
+if [ -f phpunit.xml ]; then\
+  @APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.xml;\
+else\
+  echo "Warning: phpunit.xml not found; skipping unit tests." >&2;\
+fi
+if [ -f phpunit.integration.xml ]; then\
+  @APP@/vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.integration.xml;\
+else\
+  echo "Warning: phpunit.integration.xml not found; skipping integration tests." >&2;\
+fi
+if [ ! -f package.json ]; then\
+  echo "Warning: package.json not found; skipping frontend tests." >&2;\
+elif node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync("package.json", "utf8")); const s = p.scripts?.[process.argv[1]]; if (s !== undefined && typeof s !== "string") throw new TypeError("npm test script must be a string"); process.exit(s?.trim() ? 0 : 2)' "test"; then\
+  make run-frontend-tests;\
+else\
+  status=$?;\
+  if [ "$status" -eq 2 ]; then\
+    echo "Warning: npm script 'test' not found; skipping frontend tests." >&2;\
+  else\
+    exit "$status";\
+  fi;\
+fi
 emacs --batch --file ./src/vue-app.ts -l @APP@/dev-scripts/lib/scripts/tide-project-errors.el|tee tide-errors.log

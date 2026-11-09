@@ -16,7 +16,6 @@ SCOPED_COMPOSER_UPDATE_OPTIONS ?=
 _SCOPED_COMPOSER_READY = $(BUILDDIR)/$(SCOPED_VENDOR_DIR)/.composer-ready
 _SCOPED_VENDOR_READY = $(SCOPED_VENDOR_DIR)/.scoper-ready
 
-#@private
 php-scoper-install: $(PHP_SCOPER)
 .PHONY: php-scoper-install
 
@@ -60,7 +59,6 @@ $(_SCOPED_COMPOSER_READY): $(SCOPED_COMPOSER_LOCK)
 $(BUILDDIR)/$(SCOPED_VENDOR_DIR)/autoload.php: $(BUILDDIR)/$(SCOPED_VENDOR_DIR) $(SCOPED_COMPOSER_JSON) $(MAKEFILE_DEP)
 	env COMPOSER="$(ABSSRCDIR)/$(SCOPED_COMPOSER_JSON)" $(COMPOSER) -d$(BUILDDIR) dump-autoload
 
-#@private
 composer-$(SCOPED_VENDOR_SUFFIX)-suggest:
 	@printf '\n*** Scoped Composer Suggestions ***\n\n'
 	env COMPOSER="$(ABSSRCDIR)/$(SCOPED_COMPOSER_JSON)" $(COMPOSER) -d$(BUILDDIR) suggest --all

@@ -48,8 +48,7 @@ SILENT ?= @
 # An app-local dev-scripts/release.sh overrides the generic shared script.
 RELEASE_SCRIPT ?= $(if $(wildcard $(ABSSRCDIR)/dev-scripts/release.sh),$(ABSSRCDIR)/dev-scripts/release.sh,$(DEV_LIB_DIR)/scripts/release.sh)
 
-#@@ Tag the version of appinfo/info.xml and push the release tag.
-release:
+release: ## Tag the version of appinfo/info.xml and push the release tag
 	$(SILENT)test -f "$(RELEASE_SCRIPT)" || { echo 'Release script "$(RELEASE_SCRIPT)" not found, set RELEASE_SCRIPT.' 1>&2; exit 1; }
 	bash "$(RELEASE_SCRIPT)" $(if $(filter command line,$(origin VERSION)),"$(VERSION)")
 .PHONY: release
@@ -104,8 +103,19 @@ PHPMD ?= $(ABSSRCDIR)/vendor-bin/phpmd/vendor/bin/phpmd
 
 BUNDLER_CONFIG ?= vite.config.ts
 
-MAKE_HELP_DIR ?= $(SRCDIR)/dev-scripts/MakeHelp
-include $(MAKE_HELP_DIR)/MakeHelp.mk
+###############################################################################
+#
+# Help: only rules with a trailing "## description" comment on the rule line
+# are listed, undocumented rules and variable assignments are ignored.
+
+help: ## Show this help
+	@echo "Usage: make [target]"; echo; echo "Targets:"
+	@awk 'match($$0, /^[A-Za-z0-9_.-]+[ \t]*:([^=]|$$)/) && index($$0, "##") {\
+	  name = $$0; sub(/[ \t]*:.*/, "", name);\
+	  desc = $$0; sub(/^[^#]*##[ \t]*/, "", desc);\
+	  if (!(name in seen)) { seen[name] = 1; printf "  %-24s %s\n", name, desc }\
+	}' $(MAKEFILE_LIST)
+.PHONY: help
 
 ###############################################################################
 #
@@ -155,23 +165,20 @@ APPSTORE_COPY_HOOK ?=
 #
 # Main targets
 
-#@@ The default rule.
-all: help
+all: help ## The default rule
 .PHONY: all
 .DEFAULT_GOAL := all
 
 APP_BUILD_FLAVOUR_FIRST ?=
 ifneq ($(strip $(APP_BUILD_FLAVOUR_FIRST)),)
 
-#@@ Build the distribution assets (minified, without debugging info)
-build:
+build: ## Build the distribution assets (minified, without debugging info)
 	$(MAKE) build-flavour-build
 	$(MAKE) dev-setup
 	$(MAKE) npm-build
 .PHONY: build
 
-#@@ Build the development assets (include debugging information)
-dev:
+dev: ## Build the development assets (include debugging information)
 	$(MAKE) build-flavour-dev
 	$(MAKE) dev-setup
 	$(MAKE) npm-dev
@@ -179,24 +186,20 @@ dev:
 
 else
 
-#@@ Build the distribution assets (minified, without debugging info)
-build: dev-setup npm-build
+build: dev-setup npm-build ## Build the distribution assets (minified, without debugging info)
 .PHONY: build
 
-#@@ Build the development assets (include debugging information)
-dev: dev-setup npm-dev
+dev: dev-setup npm-dev ## Build the development assets (include debugging information)
 .PHONY: dev
 
 endif
 
-#@@ Build the distribution assets with composer dependencies without dev-dependencies
-build-no-dev:
+build-no-dev: ## Build the distribution assets with composer dependencies without dev-dependencies
 	$(MAKE) COMPOSER_OPTIONS="$(COMPOSER_OPTIONS) --no-dev" build
 .PHONY: build-no-dev
 
 APP_DEV_SETUP_DEPS ?= ts-app-config
 
-#@private
 dev-setup: composer namespace-wrapper $(APP_DEV_SETUP_DEPS)
 .PHONY: dev-setup
 
@@ -253,26 +256,21 @@ include $(DEV_LIB_DIR)/makefile/npm.mk
 
 APP_PHP_DIRS ?= lib appinfo templates
 
-#@private
 $(PHPCS): composer.lock
 	if ! [ -x "$@" ]; then $(COMPOSER) bin phpcs install; else touch "$@"; fi
 
-#@private
 $(PHPMD): composer.lock
 	if ! [ -x "$@" ]; then $(COMPOSER) bin phpmd install; else touch "$@"; fi
 
-#@@ Run phpcs on the PHP code
-phpcs: $(PHPCS)
+phpcs: $(PHPCS) ## Run phpcs on the PHP code
 	$(PHPCS) -s --runtime-set ignore_warnings_on_exit 1 --report=emacs --standard=$(SRCDIR)/.phpcs.xml $(wildcard $(APP_PHP_DIRS))
 .PHONY: phpcs
 
-#@@ Run phpcs on the PHP code, hiding mere warnings, and list the affected files
-phpcs-errors: $(PHPCS)
+phpcs-errors: $(PHPCS) ## Run phpcs on the PHP code, hiding mere warnings, and list the affected files
 	$(PHPCS) -n --standard=$(SRCDIR)/.phpcs.xml $(wildcard $(APP_PHP_DIRS)) | grep FILE: | awk '{ print $$2; }'
 .PHONY: phpcs-errors
 
-#@@ Run phpmd on the PHP code
-phpmd: $(PHPMD)
+phpmd: $(PHPMD) ## Run phpmd on the PHP code
 	$(PHPMD) --format text --ruleset $(SRCDIR)/.phpmd.xml $(wildcard $(APP_PHP_DIRS))
 .PHONY: phpmd
 
@@ -280,8 +278,7 @@ phpmd: $(PHPMD)
 #
 # Appstore archive
 
-#@@ Prepare appstore archive
-appstore:
+appstore: ## Prepare appstore archive
 	$(MAKE) clean
 	$(MAKE) build
 	$(COMPOSER) $(APPSTORE_COMPOSER_ARGS)
@@ -334,20 +331,17 @@ fi
 APP_MOSTLYCLEAN_DEPS ?=
 APP_MOSTLYCLEAN_FILES ?=
 
-#@@ Removes build files
-clean: ## Tidy up local environment
+clean: ## Removes build files
 	rm -rf $(BUILDDIR)
 .PHONY: clean
 
-#@@ Same as clean but also removes dependencies installed by composer, bower and npm
-distclean: clean ## Clean even more, calls clean
+distclean: clean ## Same as clean but also removes dependencies installed by composer, bower and npm
 	rm -rf vendor $(SCOPED_VENDOR_DIR)
 	rm -rf vendor-bin/**/vendor
 	find . -name node_modules -type d -prune -exec rm -rf {} + 2> /dev/null || true
 .PHONY: distclean
 
-#@@ Almost everything but downloads
-mostlyclean: bundler-clean distclean $(APP_MOSTLYCLEAN_DEPS)
+mostlyclean: bundler-clean distclean $(APP_MOSTLYCLEAN_DEPS) ## Almost everything but downloads
 	rm -f composer*.lock
 	rm -f composer.json
 	rm -f patches.lock.json
@@ -363,13 +357,11 @@ ifneq ($(strip $(APP_MOSTLYCLEAN_FILES)),)
 endif
 .PHONY: mostlyclean
 
-#@@ Really delete everything but the bare source files
-realclean: mostlyclean downloadsclean
+realclean: mostlyclean downloadsclean ## Really delete everything but the bare source files
 	rm -f package-lock.json
 .PHONY: realclean
 
-#@@ Remove non-npm non-composer downloads
-downloadsclean:
+downloadsclean: ## Remove non-npm non-composer downloads
 	rm -rf $(DOWNLOADS_DIR)
 .PHONY: downloadsclean
 
@@ -377,12 +369,10 @@ downloadsclean:
 #
 # Tests and IDE support
 
-#@@ Run the test-suite
-test: unit-tests integration-tests frontend-tests
+test: unit-tests integration-tests frontend-tests ## Run the test-suite
 .PHONY: test
 
-#@@ Run the unit tests
-unit-tests:
+unit-tests: ## Run the unit tests
 	$(SILENT)if [ -f phpunit.xml ]; then\
 	  $(PHPUNIT) -c phpunit.xml;\
 	else\
@@ -390,8 +380,7 @@ unit-tests:
 	fi
 .PHONY: unit-tests
 
-#@@ Run the integration tests
-integration-tests:
+integration-tests: ## Run the integration tests
 	$(SILENT)if [ -f phpunit.integration.xml ]; then\
 	  $(PHPUNIT) -c phpunit.integration.xml;\
 	else\
@@ -401,13 +390,11 @@ integration-tests:
 
 TIDE_ENTRY ?= $(SRCDIR)/src/vue-app.ts
 
-#@private
 run-tide:
 	$(EMACS) --batch --file $(TIDE_ENTRY) -l $(DEV_LIB_DIR)/scripts/tide-project-errors.el|tee tide-errors.log
 .PHONY: run-tide
 
-#@@ Runs the Emacs Tide IDE in batch mode and diagnoses TypeScript errors.
-tide: dev-setup ts-app-config ts-types-files run-tide
+tide: dev-setup ts-app-config ts-types-files run-tide ## Runs the Emacs Tide IDE in batch mode and diagnoses TypeScript errors
 .PHONY: tide
 
 endif

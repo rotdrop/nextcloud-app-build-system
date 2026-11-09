@@ -12,16 +12,13 @@ TS_APP_CONFIG_IN = $(ABSSRCDIR)/dev-scripts/lib/templates/app-config.ts.in
 TS_APP_CONFIG = $(TS_TYPES_DIR)/app-config.ts
 SCSS_APP_CONFIG = $(SCSS_VARIABLES_DIR)/app-config.scss
 
-#@private
 ts-app-config: $(TS_APP_CONFIG) $(SCSS_APP_CONFIG)
 .PHONY: ts-app-config
 
-#@private
 $(TS_APP_CONFIG): $(MAKEFILE_DEP) $(DEV_LIB_DIR)/makefile/ts-app-config.mk $(APP_INFO) $(TS_APP_CONFIG_IN)
 	mkdir -p $$(dirname $@)
 	sed -e 's/@@APP_NAME@@/$(APP_NAME)/g' -e 's/@@APP_VERSION@@/$(APP_VERSION)/g' $(TS_APP_CONFIG_IN) > $@
 
-#@private
 $(SCSS_APP_CONFIG): $(MAKEFILE_DEP) $(DEV_LIB_DIR)/makefile/ts-app-config.mk $(APP_INFO)
 	mkdir -p $$(dirname $@)
 	echo '$$appName: "$(APP_NAME)";' > $@

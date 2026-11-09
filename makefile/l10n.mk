@@ -52,20 +52,17 @@ ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
 endif
 .PHONY: toolkit-l10n
 
-#@@ Generate package string catalogues before creating the app's POT files.
-l10n-sources: toolkit-l10n vue-components-l10n
+l10n-sources: toolkit-l10n vue-components-l10n ## Generate package string catalogues before creating the app's POT files
 .PHONY: l10n-sources
 
-#@@ Generate the Vue components' string catalogue, commit the result.
-vue-components-l10n:
+vue-components-l10n: ## Generate the Vue components' string catalogue, commit the result
 ifneq ($(_L10N_HAS_VUE_COMPONENTS),)
 	mkdir -p "$(dir $(VUE_COMPONENTS_L10N_DEST))"
 	cd "$(ABSSRCDIR)" && $(NPX) --no-install @rotdrop/nextcloud-vue-components extract-l10n-strings "$(VUE_COMPONENTS_L10N_DEST)" $(if $(VUE_COMPONENTS_L10N_IGNORE),"$(VUE_COMPONENTS_L10N_IGNORE)")
 endif
 .PHONY: vue-components-l10n
 
-#@@ Update only the generated Vue exclusions; run explicitly before l10n-sources.
-l10n-ignore: vue-components-l10n-ignore
+l10n-ignore: vue-components-l10n-ignore ## Update only the generated Vue exclusions; run explicitly before l10n-sources
 .PHONY: l10n-ignore
 
 vue-components-l10n-ignore:
@@ -74,8 +71,7 @@ ifneq ($(_L10N_HAS_VUE_COMPONENTS),)
 endif
 .PHONY: vue-components-l10n-ignore
 
-#@@ Print PHP exclusion candidates and their diff against .l10nignore; review only.
-toolkit-l10n-ignore-candidates:
+toolkit-l10n-ignore-candidates: ## Print PHP exclusion candidates and their diff against .l10nignore; review only
 ifneq ($(_L10N_TOOLKIT_MANIFESTS),)
 	@$(NODE) "$(_L10N_IGNORE_SCRIPT)" php-candidates "$(ABSSRCDIR)" "$(APP_TOOLKIT_DIR)" "$(L10N_IGNORE)"
 endif

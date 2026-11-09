@@ -25,26 +25,22 @@ TS_TYPES_FILES = $(TS_TYPES_DIR)/php-types.d.ts $(TS_TYPES_DIR)/php-modules/ROOT
 PHP_SOURCES=$(TS_PHP_SOURCE_DIRS:%=--source-dir %)
 TS_TYPES_FILES_DEPS = $(foreach dir,$(TS_PHP_SOURCE_DIRS),$(shell if [ -d "$(dir)" ]; then find -L "$(dir)" -name "*.php"; fi))
 
-#@private
 $(TS_TYPES_FILES): $(TS_TYPES_FILES_DEPS) $(TYPESCRIPT_CONVERTER) $(TS_TYPES_COMPOSER_DEPS) $(TS_TYPES_PACKAGE_DEPS) $(TS_TYPES_AUTOLOAD) $(MAKEFILE_DEP)
 	$(MAKE) dev-setup
 	$(TYPESCRIPT_CONVERTER) --output-prefix=$(TS_TYPES_DIR) $(PHP_SOURCES) --as-modules --ns-prefix='OCA\$(APP_NAMESPACE)' --scoped-ns-prefix=$(WRAPPER_NAMESPACE_POSTFIX)
 	$(PRETTIER_FORMATTER) --write --ignore-path /dev/null $(TS_TYPES_DIR)
 	[ -x "$(ESLINT)" ] && $(ESLINT) --fix $(TS_TYPES_DIR) && $(ESLINT) $(TS_TYPES_DIR)
 
-#@private
 $(TS_TYPES_AUTOLOAD): $(TS_TYPES_COMPOSER_DEPS)
 	$(MAKE) dev-setup
 	$(COMPOSER) -d$(ABSSRCDIR) bin php-to-typescript install
 	test -f "$@"
 
-#@private
 ts-types-files: $(TS_TYPES_FILES)
 # @echo $(TS_TYPE_FILES)
 # @echo $(TS_TYPE_FILES_DEPS)
 .PHONY: ts-types-files
 
-#@private
 scss-variables: $(TS_TYPES_FILES)
 	for i in $$(find $(TS_TYPES_DIR)/php-modules/ -name "*CssClasses.ts"); do\
  SUB_DIR="$$(dirname $$i|sed 's|^$(TS_TYPES_DIR)/php-modules/||g')";\

@@ -321,7 +321,7 @@ gh auth login
 APP_NAME=your_app
 REPO=owner/your-app-repository
 ENVIRONMENT=release
-CREDENTIALS="$HOME/.nextcloud/certificates/$APP_NAME"
+CREDENTIALS="$HOME/.nextcloud/certificates"
 
 gh secret set APP_PRIVATE_KEY --repo "$REPO" --env "$ENVIRONMENT" < "$CREDENTIALS/$APP_NAME.key"
 gh secret set APP_PUBLIC_CRT --repo "$REPO" --env "$ENVIRONMENT" < "$CREDENTIALS/$APP_NAME.crt"

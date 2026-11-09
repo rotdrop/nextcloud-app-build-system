@@ -314,6 +314,42 @@ class TestSuitesTest(AppMakefileTestCase):
         self.assertEqual((self.app / "npm.log").read_text(), "ci\n")
 
 
+@unittest.skipUnless(
+    Path("/usr/share/bash-completion/bash_completion").is_file()
+    and Path("/usr/share/bash-completion/completions/make").is_file(),
+    "requires bash-completion and its make completion",
+)
+class BashCompletionTest(AppMakefileTestCase):
+    def test_appstore_completion(self):
+        self.configure(
+            hooks="APP_NOTIFICATION_API = 1\n" + "\n".join(self.tools) + "\n"
+        )
+        for prefix in ("apps", "appstore"):
+            with self.subTest(prefix=prefix):
+                result = subprocess.run(
+                    ["bash", "-c", r"""
+source /usr/share/bash-completion/bash_completion || exit
+source /usr/share/bash-completion/completions/make || exit
+cd "$1" || exit
+completion=$(complete -p make) || exit
+completion=${completion#* -F }
+completion=${completion%% *}
+COMP_WORDS=(make "$2")
+COMP_CWORD=$((${#COMP_WORDS[@]} - 1))
+COMP_LINE="${COMP_WORDS[*]}"
+COMP_POINT=${#COMP_LINE}
+COMP_TYPE=9
+"$completion" make "$2" make
+printf '%s\n' "${COMPREPLY[@]}"
+""", "bash", str(self.app), prefix],
+                    text=True, capture_output=True,
+                    env={**self.env, "PATH": f"{self.app}:{self.env['PATH']}"},
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), ["appstore"])
+        self.assertFalse((self.app / "build").exists())
+
+
 class SnapshotTest(AppMakefileTestCase):
     def test_appstore(self):
         # Recursive make calls are replaced by "true" to snapshot only the recipe itself.

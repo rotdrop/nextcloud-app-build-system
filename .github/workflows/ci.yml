@@ -19,6 +19,10 @@ on:
       node-version:
         type: string
         default: '24'
+      python-version:
+        description: Optional Python version used for the build jobs; empty skips setup
+        type: string
+        default: ''
       apt-packages:
         description: Extra space-separated apt packages
         type: string
@@ -136,6 +140,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
+      - name: Set up Python
+        if: inputs.python-version != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
       - name: Set up Nextcloud server
         id: server
         if: inputs.build-server
@@ -170,6 +179,7 @@ jobs:
     with:
       php-version: ${{ inputs.php-version }}
       node-version: ${{ inputs.node-version }}
+      python-version: ${{ inputs.python-version }}
       apt-packages: ${{ inputs.apt-packages }}
       verify-script: ${{ inputs.verify-script }}
       make-args: ${{ inputs.make-args }}

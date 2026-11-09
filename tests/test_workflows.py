@@ -254,6 +254,41 @@ class EslintTest(unittest.TestCase):
         self.assertLess(job.index("npm ci\n"), job.index("npm run lint"))
 
 
+class PythonSetupTest(unittest.TestCase):
+    def test_python_is_opt_in_everywhere(self):
+        for path in (WORKFLOW, CI, RELEASE):
+            with self.subTest(workflow=path.name):
+                match = re.search(
+                    r"\n      python-version:\n(.*?)\n      [a-z-]+:\n",
+                    path.read_text(), re.S)
+                self.assertIsNotNone(match)
+                self.assertIn("type: string", match.group(1))
+                self.assertIn("default: ''", match.group(1))
+                self.assertNotIn("required: true", match.group(1))
+
+    def test_python_version_is_forwarded_to_archive_build(self):
+        for path in (CI, RELEASE):
+            with self.subTest(workflow=path.name):
+                job = path.read_text().split("\n  build:\n", 1)[1].split("\n  publish:", 1)[0]
+                self.assertIn("uses: rotdrop/nextcloud-app-build-system/.github/workflows/build-appstore.yml@v1", job)
+                self.assertIn("      python-version: ${{ inputs.python-version }}", job)
+
+    def test_python_setup_is_conditional_and_precedes_build(self):
+        for path, job_name, build_command in (
+                (CI, "realclean", "make build"),
+                (WORKFLOW, "build", "make appstore")):
+            with self.subTest(workflow=path.name):
+                text = path.read_text()
+                job = text.split(f"\n  {job_name}:\n", 1)[1].split("\n  build:\n", 1)[0]
+                steps = re.split(r"\n      - ", job)[1:]
+                setup = [step for step in steps if "uses: actions/setup-python@" in step]
+                self.assertEqual(len(setup), 1)
+                self.assertIn("if: inputs.python-version != ''", setup[0])
+                self.assertIn("python-version: ${{ inputs.python-version }}", setup[0])
+                self.assertLess(job.index(setup[0]), job.index(build_command))
+                self.assertEqual(text.count("uses: actions/setup-python@"), 1)
+
+
 class BuildServerTest(unittest.TestCase):
     def test_build_server_is_opt_in_everywhere(self):
         for path in (WORKFLOW, CI, RELEASE):

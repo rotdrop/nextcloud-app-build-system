@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Reusable release workflow. Call it from a tag-triggered workflow
-# (`on: push: tags: ['v*']`) with `secrets: inherit`.
+# (`on: push: tags: ['v*']`) with `secrets: inherit` and
+# `permissions: contents: write` (the publish job creates the GitHub release;
+# a called workflow cannot elevate permissions granted by its caller).
 # The tag must be `v<version>` with the version from appinfo/info.xml; a
 # version containing `-` is published as a pre-release (uploaded to the app
 # store as nightly). With `sign: false` an unsigned archive is attached.

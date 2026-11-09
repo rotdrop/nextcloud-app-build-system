@@ -281,6 +281,11 @@ jobs:
       contents: write
 ```
 
+The caller must grant `contents: write`: the reusable workflow creates a GitHub
+release, and a called workflow cannot receive more permissions than its caller.
+Without this permission, GitHub may fail the workflow at startup without a
+useful job log.
+
 Common inputs: `php-version`, `node-version`, `apt-packages`, `make-args`
 and `verify-script` (a script relative to the app root, run after the build
 with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has

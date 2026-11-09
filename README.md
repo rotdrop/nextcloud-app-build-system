@@ -14,6 +14,8 @@ The tests require Python 3, GNU Make, PHP, Node.js 16.9 or newer, and `patch`.
 They create temporary app fixtures and provide stand-ins for `xpath`, the
 toolkit, and the Vue extractor; no Nextcloud installation, Composer/npm
 dependency installation, or additional Python packages are needed.
+The Bash target-completion regression test also uses `bash-completion` and its
+GNU Make completion under `/usr/share/bash-completion`; it is skipped if absent.
 
 The GitHub Actions workflow in `.github/workflows/tests.yml` runs the same
 command on pushes to `main` and on pull requests, and can also be started manually.
@@ -126,6 +128,14 @@ header of `app.mk`: `APP_DEV_SETUP_DEPS`, `APP_REQUIRED_TOOLS`,
 `lint: ## Linting`. Rules without such a comment and variable assignments
 (`:=`) are not listed. Apps no longer need the `dev-scripts/MakeHelp`
 submodule and should remove it.
+
+### Bash target completion
+
+The standard `bash-completion` completion for GNU Make discovers targets through
+the shared includes; no app-specific completion script is needed. Keep leading
+recipe tabs on continued shell-command lines as well: without them, a command
+containing a colon (such as `integrity:sign-app`) can be misidentified as a target
+in Make's printed database and hide `appstore` from completion.
 
 ### Application test suites
 

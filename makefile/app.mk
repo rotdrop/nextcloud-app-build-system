@@ -287,41 +287,41 @@ appstore: ## Prepare appstore archive
 	$(if $(strip $(APPSTORE_COPY_HOOK)),$(MAKE) $(APPSTORE_COPY_HOOK))
 	mkdir -p $(BUILD_CERT_DIR)
 	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
-umask 077;\
-if [ -n "$$APP_PRIVATE_KEY" ]; then\
-  echo "$$APP_PRIVATE_KEY" > $(BUILD_CERT_DIR)/$(APP_NAME).key;\
-elif [ -f "$(CERT_DIR)/$(APP_NAME).key" ]; then\
-  cp $(CERT_DIR)/$(APP_NAME).key $(BUILD_CERT_DIR)/$(APP_NAME).key;\
-fi;\
-if [ -n "$$APP_PUBLIC_CRT" ]; then\
-  echo "$$APP_PUBLIC_CRT" > $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
-fi
+	umask 077;\
+	if [ -n "$$APP_PRIVATE_KEY" ]; then\
+	  echo "$$APP_PRIVATE_KEY" > $(BUILD_CERT_DIR)/$(APP_NAME).key;\
+	elif [ -f "$(CERT_DIR)/$(APP_NAME).key" ]; then\
+	  cp $(CERT_DIR)/$(APP_NAME).key $(BUILD_CERT_DIR)/$(APP_NAME).key;\
+	fi;\
+	if [ -n "$$APP_PUBLIC_CRT" ]; then\
+	  echo "$$APP_PUBLIC_CRT" > $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
+	fi
 	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
-if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ ! -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
-  curl -L -o $(BUILD_CERT_DIR)/$(APP_NAME).crt\
- "https://github.com/nextcloud/app-certificate-requests/raw/master/$(APP_NAME)/$(APP_NAME).crt";\
-  $(OPENSSL) x509 -in $(BUILD_CERT_DIR)/$(APP_NAME).crt -noout -text > /dev/null 2>&1 || rm -f $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
-fi
+	if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ ! -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	  curl -L -o $(BUILD_CERT_DIR)/$(APP_NAME).crt\
+	 "https://github.com/nextcloud/app-certificate-requests/raw/master/$(APP_NAME)/$(APP_NAME).crt";\
+	  $(OPENSSL) x509 -in $(BUILD_CERT_DIR)/$(APP_NAME).crt -noout -text > /dev/null 2>&1 || rm -f $(BUILD_CERT_DIR)/$(APP_NAME).crt;\
+	fi
 	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
-if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
-  echo "Signing app files ...";\
-  $(PHP) $(OCC) integrity:sign-app\
- --privateKey=$(ABSSRCDIR)/$(BUILD_CERT_DIR)/$(APP_NAME).key\
- --certificate=$(ABSSRCDIR)/$(BUILD_CERT_DIR)/$(APP_NAME).crt\
- --path=$(ABSSRCDIR)/$(APPSTORE_SIGN_DIR)/$(APP_NAME);\
-  echo "... signing app files done";\
-else\
-  echo 'Cannot sign app-files, certificate "$(BUILD_CERT_DIR)/$(APP_NAME).crt" or private key "$(BUILD_CERT_DIR)/$(APP_NAME).key" not available.' 1>&2;\
-fi
+	if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	  echo "Signing app files ...";\
+	  $(PHP) $(OCC) integrity:sign-app\
+	 --privateKey=$(ABSSRCDIR)/$(BUILD_CERT_DIR)/$(APP_NAME).key\
+	 --certificate=$(ABSSRCDIR)/$(BUILD_CERT_DIR)/$(APP_NAME).crt\
+	 --path=$(ABSSRCDIR)/$(APPSTORE_SIGN_DIR)/$(APP_NAME);\
+	  echo "... signing app files done";\
+	else\
+	  echo 'Cannot sign app-files, certificate "$(BUILD_CERT_DIR)/$(APP_NAME).crt" or private key "$(BUILD_CERT_DIR)/$(APP_NAME).key" not available.' 1>&2;\
+	fi
 	tar -c$(APPSTORE_COMPRESSION)f $(APPSTORE_PACKAGE_FILE) -C $(APPSTORE_SIGN_DIR) $(APP_NAME)
 	$(SILENT)if [ "$(APPSTORE_SIGN)" = 0 ]; then exit 0; fi;\
-if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
-  echo "Signing package ...";\
-  $(OPENSSL) dgst -sha512 -sign $(BUILD_CERT_DIR)/$(APP_NAME).key -out $(APPSTORE_PACKAGE_FILE).sig $(APPSTORE_PACKAGE_FILE);\
-  $(OPENSSL) base64 -in $(APPSTORE_PACKAGE_FILE).sig;\
-else\
-  echo 'Cannot sign app-store package, certificate "$(BUILD_CERT_DIR)/$(APP_NAME).crt" or private key "$(BUILD_CERT_DIR)/$(APP_NAME).key" not available.' 1>&2;\
-fi
+	if [ -f $(BUILD_CERT_DIR)/$(APP_NAME).key ] && [ -f $(BUILD_CERT_DIR)/$(APP_NAME).crt ]; then\
+	  echo "Signing package ...";\
+	  $(OPENSSL) dgst -sha512 -sign $(BUILD_CERT_DIR)/$(APP_NAME).key -out $(APPSTORE_PACKAGE_FILE).sig $(APPSTORE_PACKAGE_FILE);\
+	  $(OPENSSL) base64 -in $(APPSTORE_PACKAGE_FILE).sig;\
+	else\
+	  echo 'Cannot sign app-store package, certificate "$(BUILD_CERT_DIR)/$(APP_NAME).crt" or private key "$(BUILD_CERT_DIR)/$(APP_NAME).key" not available.' 1>&2;\
+	fi
 .PHONY: appstore
 
 ###############################################################################

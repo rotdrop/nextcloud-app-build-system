@@ -176,6 +176,20 @@ class WorkflowOutputsTest(unittest.TestCase):
 
 
 RELEASE = ROOT / ".github/workflows/release.yml"
+README = ROOT / "README.md"
+
+
+class ReleasePermissionsDocumentationTest(unittest.TestCase):
+    def test_release_workflow_header_documents_caller_permission(self):
+        header = RELEASE.read_text().split("name: Release", 1)[0]
+        self.assertIn("permissions: contents: write", header)
+        self.assertIn("cannot elevate permissions", header)
+
+    def test_readme_release_caller_grants_and_explains_write_permission(self):
+        readme = " ".join(README.read_text().split())
+        self.assertIn("permissions: contents: write", readme)
+        self.assertIn("called workflow cannot receive more permissions than its caller", readme)
+        self.assertIn("without a useful job log", readme)
 
 
 def appstore_payload(prerelease):

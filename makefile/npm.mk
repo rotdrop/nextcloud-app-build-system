@@ -62,6 +62,31 @@ npm-build: build-flavour-build
 	$(MAKE) $(BUNDLER_TARGETS)
 .PHONY: npm-build
 
+NODE ?= node
+FRONTEND_TEST_SCRIPT ?= test
+FRONTEND_TEST_ARGS ?= --run
+
+#@@ Run the configured frontend suite once, or warn if no test script exists
+frontend-tests:
+	$(SILENT)if [ ! -f package.json ]; then\
+	  echo "Warning: package.json not found; skipping frontend tests." >&2;\
+	elif $(NODE) -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync("package.json", "utf8")); const s = p.scripts?.[process.argv[1]]; if (s !== undefined && typeof s !== "string") throw new TypeError("npm test script must be a string"); process.exit(s?.trim() ? 0 : 2)' "$(FRONTEND_TEST_SCRIPT)"; then\
+	  $(MAKE) run-frontend-tests;\
+	else\
+	  status=$$?;\
+	  if [ "$$status" -eq 2 ]; then\
+	    echo "Warning: npm script '$(FRONTEND_TEST_SCRIPT)' not found; skipping frontend tests." >&2;\
+	  else\
+	    exit "$$status";\
+	  fi;\
+	fi
+.PHONY: frontend-tests
+
+#@private
+run-frontend-tests: node_modules
+	$(NPM) run $(FRONTEND_TEST_SCRIPT) -- $(FRONTEND_TEST_ARGS)
+.PHONY: run-frontend-tests
+
 #@@ Linting
 lint:
 	$(NPM) run lint

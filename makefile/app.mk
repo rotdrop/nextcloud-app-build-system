@@ -378,17 +378,25 @@ downloadsclean:
 # Tests and IDE support
 
 #@@ Run the test-suite
-test: unit-tests integration-tests
+test: unit-tests integration-tests frontend-tests
 .PHONY: test
 
 #@@ Run the unit tests
 unit-tests:
-	$(PHPUNIT) -c phpunit.xml
+	$(SILENT)if [ -f phpunit.xml ]; then\
+	  $(PHPUNIT) -c phpunit.xml;\
+	else\
+	  echo "Warning: phpunit.xml not found; skipping unit tests." >&2;\
+	fi
 .PHONY: unit-tests
 
 #@@ Run the integration tests
 integration-tests:
-	$(PHPUNIT) -c phpunit.integration.xml
+	$(SILENT)if [ -f phpunit.integration.xml ]; then\
+	  $(PHPUNIT) -c phpunit.integration.xml;\
+	else\
+	  echo "Warning: phpunit.integration.xml not found; skipping integration tests." >&2;\
+	fi
 .PHONY: integration-tests
 
 TIDE_ENTRY ?= $(SRCDIR)/src/vue-app.ts

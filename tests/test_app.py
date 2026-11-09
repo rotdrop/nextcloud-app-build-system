@@ -6,6 +6,7 @@ intended change with:
 
     UPDATE_SNAPSHOTS=1 python3 -B -m unittest tests.test_app
 """
+import json
 import os
 
 # Tools parsed or asserted on by the tests must not emit localized output.
@@ -140,6 +141,178 @@ class AppMakefileTestCase(unittest.TestCase):
             rules=f"print-var:\n\t@echo '$({name})'\n",
         )
         return self.make("print-var", *extra).stdout.strip()
+
+
+class TestSuitesTest(AppMakefileTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write(
+            "phpunit",
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> phpunit.log\n"
+            "exit \"${PHPUNIT_STATUS:-0}\"\n",
+        )
+        self.write(
+            "npm",
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> npm.log\n"
+            "case \"$1\" in\n"
+            "  ci) test -z \"$FAIL_CI\" || exit 24; mkdir -p node_modules ;;\n"
+            "  run) test -d node_modules || exit 98; exit \"${TEST_STATUS:-0}\" ;;\n"
+            "  *) exit 99 ;;\n"
+            "esac\n",
+        )
+        for name in ("phpunit", "npm"):
+            (self.app / name).chmod(0o755)
+        self.configure(
+            hooks="PHPUNIT = $(ABSSRCDIR)/phpunit\nNPM = $(ABSSRCDIR)/npm\n"
+        )
+
+    def suite_make(self, *arguments, **kwargs):
+        return self.make(*arguments, f"NPM={self.app / 'npm'}", **kwargs)
+
+    def frontend_suite(self, script="vitest run", name="test"):
+        self.write("package.json", json.dumps({"scripts": {name: script}}))
+        self.write("package-lock.json", "{}\n")
+
+    def test_absent_suites_warn_without_invoking_runners(self):
+        result = self.suite_make("test")
+        for warning in (
+            "phpunit.xml not found", "phpunit.integration.xml not found",
+            "npm script 'test' not found",
+        ):
+            self.assertIn(warning, result.stderr)
+        self.assertFalse((self.app / "phpunit.log").exists())
+        self.assertFalse((self.app / "npm.log").exists())
+        self.assertFalse((self.app / "node_modules").exists())
+
+    def test_php_suites_run_only_with_their_configuration(self):
+        for config, target in (
+            ("phpunit.xml", "unit-tests"),
+            ("phpunit.integration.xml", "integration-tests"),
+        ):
+            with self.subTest(target=target):
+                self.suite_make(target)
+                self.assertFalse((self.app / "phpunit.log").exists())
+                self.write(config, "<phpunit/>\n")
+                self.suite_make(target)
+                self.assertEqual(
+                    (self.app / "phpunit.log").read_text(), f"-c {config}\n"
+                )
+                (self.app / "phpunit.log").unlink()
+
+    def test_php_failures_are_not_skipped(self):
+        for target, config in (
+            ("unit-tests", "phpunit.xml"),
+            ("integration-tests", "phpunit.integration.xml"),
+        ):
+            with self.subTest(target=target):
+                self.write(config, "<phpunit/>\n")
+                result = self.suite_make(
+                    target, success=False,
+                    env={**self.env, "PHPUNIT_STATUS": "23"},
+                )
+                self.assertIn("Error 23", result.stderr)
+                self.assertNotIn("skipping", result.stderr)
+
+    def test_missing_php_runner_is_an_error(self):
+        self.write("phpunit.xml", "<phpunit/>\n")
+        (self.app / "phpunit").unlink()
+        self.suite_make("unit-tests", success=False)
+
+    def test_php_only_runs_without_npm_dependencies(self):
+        self.write("phpunit.xml", "<phpunit/>\n")
+        self.suite_make("test")
+        self.assertEqual((self.app / "phpunit.log").read_text(), "-c phpunit.xml\n")
+        self.assertFalse((self.app / "npm.log").exists())
+
+    def test_frontend_only_installs_then_runs_once(self):
+        self.frontend_suite("vitest")
+        self.write("js/existing.js", "keep\n")
+        self.suite_make("test")
+        self.assertEqual((self.app / "npm.log").read_text(), "ci\nrun test -- --run\n")
+        self.suite_make("test")
+        self.assertEqual(
+            (self.app / "npm.log").read_text(),
+            "ci\nrun test -- --run\nrun test -- --run\n",
+        )
+        self.assertEqual((self.app / "js/existing.js").read_text(), "keep\n")
+        self.assertFalse((self.app / "build-flavour").exists())
+
+    def test_mixed_suites_run_in_parallel(self):
+        self.frontend_suite()
+        self.write("phpunit.xml", "<phpunit/>\n")
+        self.write("phpunit.integration.xml", "<phpunit/>\n")
+        self.suite_make("-j4", "test")
+        self.assertCountEqual(
+            (self.app / "phpunit.log").read_text().splitlines(),
+            ["-c phpunit.xml", "-c phpunit.integration.xml"],
+        )
+        self.assertEqual((self.app / "npm.log").read_text(), "ci\nrun test -- --run\n")
+
+    def test_missing_manifest_warns_without_node_or_npm(self):
+        (self.app / "package.json").unlink()
+        result = self.suite_make("frontend-tests", "NODE=/nonexistent/node")
+        self.assertIn("package.json not found", result.stderr)
+        self.assertFalse((self.app / "npm.log").exists())
+
+    def test_empty_script_is_absent(self):
+        self.frontend_suite("  ")
+        result = self.suite_make("frontend-tests")
+        self.assertIn("npm script 'test' not found", result.stderr)
+        self.assertFalse((self.app / "npm.log").exists())
+
+    def test_invalid_manifest_and_missing_node_are_errors(self):
+        self.write("package.json", "{invalid")
+        self.suite_make("frontend-tests", success=False)
+        self.frontend_suite(script=42)
+        result = self.suite_make("frontend-tests", success=False)
+        self.assertIn("npm test script must be a string", result.stderr)
+        self.write("package.json", "{}")
+        self.suite_make("frontend-tests", "NODE=/nonexistent/node", success=False)
+        self.assertFalse((self.app / "npm.log").exists())
+
+    def test_frontend_script_and_arguments_can_be_overridden(self):
+        self.frontend_suite("vitest run", name="test:unit")
+        self.suite_make(
+            "frontend-tests", "FRONTEND_TEST_SCRIPT=test:unit",
+            "FRONTEND_TEST_ARGS=--run --reporter=verbose",
+        )
+        self.assertEqual(
+            (self.app / "npm.log").read_text(),
+            "ci\nrun test:unit -- --run --reporter=verbose\n",
+        )
+        self.suite_make(
+            "frontend-tests", "FRONTEND_TEST_SCRIPT=test:unit",
+            "FRONTEND_TEST_ARGS=",
+        )
+        self.assertTrue((self.app / "npm.log").read_text().endswith("run test:unit --\n"))
+
+    def test_frontend_failure_is_fatal(self):
+        self.frontend_suite()
+        # Vitest uses status 1 for failed tests and for an empty configured suite.
+        for status in ("1", "23", "127"):
+            with self.subTest(status=status):
+                result = self.suite_make(
+                    "test", success=False, env={**self.env, "TEST_STATUS": status},
+                )
+                self.assertIn(f"Error {status}", result.stderr)
+        self.assertEqual(
+            (self.app / "npm.log").read_text(),
+            "ci\n" + "run test -- --run\n" * 3,
+        )
+
+    def test_missing_lockfile_or_failed_install_stops_frontend_tests(self):
+        self.frontend_suite()
+        (self.app / "package-lock.json").unlink()
+        result = self.suite_make("frontend-tests", success=False)
+        self.assertIn("run 'make update-package-lock'", result.stderr)
+        self.assertFalse((self.app / "npm.log").exists())
+        self.write("package-lock.json", "{}")
+        self.suite_make(
+            "frontend-tests", success=False, env={**self.env, "FAIL_CI": "1"},
+        )
+        self.assertEqual((self.app / "npm.log").read_text(), "ci\n")
 
 
 class SnapshotTest(AppMakefileTestCase):

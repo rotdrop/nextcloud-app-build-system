@@ -18,6 +18,10 @@ on:
       node-version:
         type: string
         default: '24'
+      python-version:
+        description: Optional Python version used for the build; empty skips setup
+        type: string
+        default: ''
       apt-packages:
         type: string
         default: ''
@@ -102,6 +106,7 @@ jobs:
       environment: ${{ inputs.environment }}
       php-version: ${{ inputs.php-version }}
       node-version: ${{ inputs.node-version }}
+      python-version: ${{ inputs.python-version }}
       apt-packages: ${{ inputs.apt-packages }}
       make-args: ${{ inputs.make-args }}
       verify-script: ${{ inputs.verify-script }}

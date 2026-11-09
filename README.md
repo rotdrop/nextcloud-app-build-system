@@ -286,11 +286,24 @@ release, and a called workflow cannot receive more permissions than its caller.
 Without this permission, GitHub may fail the workflow at startup without a
 useful job log.
 
-Common inputs: `php-version`, `node-version`, `apt-packages`, `make-args`
+Common inputs: `php-version`, `node-version`, `python-version`, `apt-packages`, `make-args`
 and `verify-script` (a script relative to the app root, run after the build
 with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has
 further inputs for the PHP extensions, `release`, `environment` and the
 signing server.
+
+`python-version` is an optional string, empty by default. When non-empty,
+`actions/setup-python` installs the requested version before the CI `realclean`
+build and the archive build. Both `ci.yml` and `release.yml` forward it to
+`build-appstore.yml`. Omitting it leaves the runner's Python environment unchanged.
+For example, an app requiring Python 3.13 and additional build utilities can use
+the following inputs with any of these reusable workflows:
+
+```yaml
+with:
+  python-version: '3.13'
+  apt-packages: 7zip curl
+```
 
 ### Configuring signing and app store secrets
 

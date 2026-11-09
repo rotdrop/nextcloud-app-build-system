@@ -32,6 +32,10 @@ on:
         description: Node.js version used for the build
         type: string
         default: '24'
+      python-version:
+        description: Optional Python version used for the build; empty skips setup
+        type: string
+        default: ''
       apt-packages:
         description: Extra space-separated apt packages; libxml-xpath-perl and rsync are always installed
         type: string
@@ -168,6 +172,12 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node-version }}
+
+      - name: Set up Python
+        if: inputs.python-version != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
       - name: Read app id and version
         id: meta

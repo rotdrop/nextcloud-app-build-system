@@ -31,15 +31,12 @@ PHPUNIT_ARGS ?= --display-all-issues
 PHPCOVERAGE ?= -d zend_extension=xdebug.so -d xdebug.mode=coverage
 PHING ?= $(ABSSRCDIR)/vendor-bin/phing/vendor/bin/phing
 
-#@@ Run phpunit with coverage and junit log and post-process the junit log
-phpunit: dophpunit $(PHPUNIT_JUNIT_LOG_HTML)/index.html
+phpunit: dophpunit $(PHPUNIT_JUNIT_LOG_HTML)/index.html ## Run phpunit with coverage and junit log and post-process the junit log
 .PHONY: phpunit
 
-#@@ Post-process junit-log xml file
-phpjunit-log: $(PHPUNIT_JUNIT_LOG_HTML)/index.html
+phpjunit-log: $(PHPUNIT_JUNIT_LOG_HTML)/index.html ## Post-process junit-log xml file
 .PHONY: phpjunit-log
 
-#@private
 dophpunit: $(PHPUNIT_DEPS)
 	$(PHP) $(PHPCOVERAGE) $(PHPUNIT)\
  -c $(PHPUNIT_CONFIG)\
@@ -48,21 +45,17 @@ dophpunit: $(PHPUNIT_DEPS)
  $(PHPUNIT_ARGS)
 .PHONY: dophpunit
 
-#@private
 $(PHPUNIT_JUNIT_LOG):
 
-#@private
 $(PHING_BUILD_XML): $(SRCDIR)/vendor-bin/phing/phing-build.xml.in $(MAKEFILE_DEP)
 	mkdir -p $(dir $@)
 	sed -e 's|%BASEDIR%|$(ABSSRCDIR)|g' -e 's|%INFILE%|$(PHPUNIT_JUNIT_LOG)|g' -e 's|%OUTPUTDIR%|$(PHPUNIT_JUNIT_LOG_HTML)|g' < $< > $@
 
-#@private
 $(PHPUNIT_JUNIT_LOG_HTML)/index.html: $(PHING_BUILD_XML) $(PHPUNIT_JUNIT_LOG) $(PHING)
 	mkdir -p $(PHPUNIT_JUNIT_LOG_HTML)
 	$(PHING) -f $(PHING_BUILD_XML)
 
-#@@ Runs phpunit with a filter given by the PHPUNITTEST variable which should be specified on the command line.
-phpunitfilter: $(PHPUNIT_DEPS)
+phpunitfilter: $(PHPUNIT_DEPS) ## Run phpunit with a filter given by PHPUNITTEST on the command line
 	@if [ -z "$(PHPUNITTEST)" ]; then echo "Please add PHPUNITTEST=FILTER_EXPRESSION to the make command line" 1>&2; exit 1; fi
 	$(PHP) $(PHPCOVERAGE) $(PHPUNIT) -c $(PHPUNIT_CONFIG) --no-coverage --display-all-issues --filter "$(PHPUNITTEST)"
 .PHONY: phpunitfilter

@@ -69,7 +69,6 @@ class AppMakefileTestCase(unittest.TestCase):
         self.write("src/main.ts", "")
         self.write("img/icon.svg", "")
         self.write("l10n/de.js", "")
-        self.write("dev-scripts/MakeHelp/MakeHelp.mk", "help:\n\t@echo help\n")
         self.write("dev-scripts/php-to-typescript.php", "")
         (self.app / "dev-scripts/lib").symlink_to(ROOT)
         self.write("xpath", XPATH_STUB)
@@ -387,7 +386,15 @@ class SigningTest(AppMakefileTestCase):
 
 class VariableTest(AppMakefileTestCase):
     def test_default_goal_is_help(self):
-        self.assertEqual(self.make().stdout.strip(), "help")
+        out = self.make().stdout
+        self.assertIn("Targets:", out)
+        self.assertRegex(out, r"(?m)^  build\s+Build the distribution assets")
+
+    def test_help_lists_only_documented_rules(self):
+        out = self.make("help").stdout
+        self.assertNotIn("dev-setup", out)
+        self.assertNotIn("DRY", out)
+        self.assertNotRegex(out, r"(?m)^  [A-Za-z_]+\s*:?=")
 
     def test_version_is_read_from_info_xml(self):
         self.assertEqual(self.variable("APP_VERSION"), "1.2.3")

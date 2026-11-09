@@ -132,7 +132,7 @@ jobs:
       - name: Checkout app
         uses: actions/checkout@v5
         with:
-          # dev-scripts/lib and dev-scripts/MakeHelp are git submodules.
+          # dev-scripts/lib is a git submodule.
           submodules: recursive
           persist-credentials: false
 

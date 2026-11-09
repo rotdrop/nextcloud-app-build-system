@@ -119,6 +119,14 @@ header of `app.mk`: `APP_DEV_SETUP_DEPS`, `APP_REQUIRED_TOOLS`,
 `wget` is not required by default; apps needing it set
 `APP_REQUIRED_TOOLS = WGET` before the include.
 
+### `make help`
+
+`make help` (the default goal) lists the rules that carry a trailing
+`## description` comment on the rule line, e.g.
+`lint: ## Linting`. Rules without such a comment and variable assignments
+(`:=`) are not listed. Apps no longer need the `dev-scripts/MakeHelp`
+submodule and should remove it.
+
 ### Application test suites
 
 `make test` runs `unit-tests`, `integration-tests`, and `frontend-tests`.
@@ -173,19 +181,15 @@ dev-setup: build-fonts $(FONTS_LIST_FILE)
 
 # rebuild some fonts which seemingly are shipped in a broken or too
 # old version by tcpdf
-#@private
 build-fonts: stamp.tcpdf-fonts
 .PHONY: build-fonts
 
-#@private
 stamp.tcpdf-fonts: stamp.tcpdf-dejavu-fonts
 	date > $@
 
-#@private
 build-fonts-dejavu: stamp.tcpdf-dejavu-fonts
 .PHONY: build-fonts-dejavu
 
-#@private
 stamp.tcpdf-dejavu-fonts: $(SCOPED_VENDOR_DIR)/autoload.php composer.lock $(MAKEFILE_DEP) $(DEJAVU_SRC_DIR)
 	rm -f $(FONTS_DST_DIR)/dejavu*.php
 	rm -f $(FONTS_DST_DIR)/dejavu*.z
@@ -195,18 +199,15 @@ stamp.tcpdf-dejavu-fonts: $(SCOPED_VENDOR_DIR)/autoload.php composer.lock $(MAKE
 	cd $(DEJAVU_SRC_DIR); $(PHP) $(TCPDF_ADDFONT) -b -t TrueTypeUnicode -f 97 -i DejaVuSansMono-BoldOblique.ttf,DejaVuSansMono-Oblique.ttf
 	date > $@
 
-#@private
 $(DEJAVU_SRC_DIR): $(DOWNLOADS_DIR)/$(DEJAVU_ARCHIVE)
 	mkdir -p $(FONTS_SRC_DIR)
 	tar -C $(FONTS_SRC_DIR) -x -f $(ABSSRCDIR)/$(DOWNLOADS_DIR)/$(DEJAVU_ARCHIVE)
 	touch $@
 
-#@private
 $(DOWNLOADS_DIR)/$(DEJAVU_ARCHIVE):
 	mkdir -p $(DOWNLOADS_DIR)
 	cd $(DOWNLOADS_DIR); $(WGET) $(DEJAVU_DOWNLOAD_URL)
 
-#@private
 $(FONTS_LIST_FILE): stamp.tcpdf-fonts $(wildcard $(FONTS_DST_DIR)/*.php)
 	mkdir -p $(dir $@)
 	( echo '{';\
@@ -227,7 +228,6 @@ done;\
 echo '}'; ) > $(FONTS_LIST_FILE)
 
 # The archive additionally ships the toolkit configuration and the fonts list.
-#@private
 appstore-copy-fonts:
 	mkdir -p $(APPSTORE_SIGN_DIR)/$(APP_NAME)/config
 	$(RSYNC) -a -L $(APPSTORE_BLACKLISTED:%=--exclude '%') $(SCOPED_VENDOR_DIR)/rotdrop/nextcloud-app-toolkit/config/ $(FONTS_LIST_FILE) $(APPSTORE_SIGN_DIR)/$(APP_NAME)/config/

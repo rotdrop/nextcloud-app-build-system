@@ -36,13 +36,11 @@ PHPDOC_DIRS ?= lib tests/phpunit
 PHPDOC_PREREQ_TARGET ?= dev-setup
 PHPDOC_HTML ?= $(DOC_BUILD_DIR)/phpdoc/
 
-#@@ Run phpDocumentor
-phpdoc: $(PHPDOC_HTML)/index.html
+phpdoc: $(PHPDOC_HTML)/index.html ## Run phpDocumentor
 .PHONY: phpdoc
 
 # The directory arguments must be relative paths, otherwise funny things
 # are happening.
-#@private
 $(PHPDOC_HTML)/index.html: $(APP_BUILD_HASH) $(MAKEFILE_DEP)
 	$(MAKE) $(PHPDOC_PREREQ_TARGET)
 	rm -rf $(PHPDOC_HTML)

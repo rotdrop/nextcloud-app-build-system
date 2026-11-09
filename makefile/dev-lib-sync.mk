@@ -12,16 +12,15 @@ DEV_LIB_SYNC_BRANCH = main
 DEV_LIB_SYNC_TAG = v1
 DEV_LIB_SYNC_TRAILER = Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 
-#@@ Update the dev-scripts/lib submodule to origin/main if necessary, commit only
-#@@ the submodule update and push it to the current branch (never force-pushes,
-#@@ never pushes other refs). Intended for local development only.
-dev-lib-sync:
+# Commits only the submodule update and pushes it to the current branch (never
+# force-pushes, never pushes other refs). Intended for local development only.
+dev-lib-sync: ## Update the dev-scripts/lib submodule to origin/main, commit and push
 	@'$(DEV_LIB_SYNC_SCRIPT)' dev-lib-sync '$(ABSSRCDIR)' '$(DEV_LIB_DIR)' \
 	  '$(DEV_LIB_SYNC_REMOTE)' branch '$(DEV_LIB_SYNC_BRANCH)' '$(DEV_LIB_SYNC_TRAILER)'
 
-#@@ Like dev-lib-sync, but update to the commit of the tag DEV_LIB_SYNC_TAG
-#@@ (default v1, the release line the reusable workflows are pinned to).
-dev-lib-sync-release:
+# DEV_LIB_SYNC_TAG defaults to v1, the release line the reusable workflows are
+# pinned to.
+dev-lib-sync-release: ## Like dev-lib-sync, but update to the commit of the tag DEV_LIB_SYNC_TAG
 	@'$(DEV_LIB_SYNC_SCRIPT)' dev-lib-sync-release '$(ABSSRCDIR)' '$(DEV_LIB_DIR)' \
 	  '$(DEV_LIB_SYNC_REMOTE)' tag '$(DEV_LIB_SYNC_TAG)' '$(DEV_LIB_SYNC_TRAILER)'
 .PHONY: dev-lib-sync dev-lib-sync-release

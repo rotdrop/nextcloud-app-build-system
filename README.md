@@ -287,6 +287,68 @@ with `APP_ID`, `APP_VERSION` and `ARCHIVE` set). `build-appstore.yml` has
 further inputs for the PHP extensions, `release`, `environment` and the
 signing server.
 
+### Configuring signing and app store secrets
+
+Configure secrets in the **consuming app's repository**, not in this shared
+build-system repository. The release workflows use the `release` environment
+by default. Create it under **Settings > Environments** in the app repository
+and configure any required reviewers or tag restrictions before publishing.
+If the caller sets `with.environment` to another name, use that name below.
+
+For credentials stored under `~/.nextcloud/certificates/APP_NAME/`, use this
+layout (`APP_NAME` is the app id from `appinfo/info.xml`):
+
+```text
+~/.nextcloud/certificates/APP_NAME/
+    APP_NAME.key       # PEM private signing key
+    APP_NAME.crt       # PEM public signing certificate
+    appstore-token     # app store API token only, not a dotenv assignment
+```
+
+Obtain the API token from your account on the
+[Nextcloud app store](https://apps.nextcloud.com/), using an account authorized
+to publish the app. This is **not** a GitHub token or the signing private key.
+Save it in `appstore-token` alongside the signing credentials; this filename is
+a local storage convention, not a file automatically read by the build system.
+Keep the directory private (`chmod 700`) and the private key and token readable
+only by you (`chmod 600`); never commit them.
+
+With [GitHub CLI](https://cli.github.com/) authenticated as a user with permission
+to manage the app repository's secrets, upload the file contents directly:
+
+```sh
+gh auth login
+APP_NAME=your_app
+REPO=owner/your-app-repository
+ENVIRONMENT=release
+CREDENTIALS="$HOME/.nextcloud/certificates/$APP_NAME"
+
+gh secret set APP_PRIVATE_KEY --repo "$REPO" --env "$ENVIRONMENT" < "$CREDENTIALS/$APP_NAME.key"
+gh secret set APP_PUBLIC_CRT --repo "$REPO" --env "$ENVIRONMENT" < "$CREDENTIALS/$APP_NAME.crt"
+gh secret set APPSTORE_TOKEN --repo "$REPO" --env "$ENVIRONMENT" < "$CREDENTIALS/appstore-token"
+gh secret list --repo "$REPO" --env "$ENVIRONMENT"
+```
+
+These commands preserve the PEM contents and avoid putting credentials in
+command-line arguments or shell history. `gh secret list` shows names and
+metadata, not values; rerun `gh secret set` to rotate a credential.
+
+Keep `secrets: inherit` in the release caller shown above. Environment secrets
+are resolved by the reusable workflow's jobs in the consuming repository;
+both signing and app store upload select the same environment. Repository-level
+Actions secrets are also supported: omit `--env "$ENVIRONMENT"` when setting
+them and keep `secrets: inherit`. An environment secret with the same name
+takes precedence over a repository secret.
+
+For local signing with this per-app directory layout, pass
+`CERT_DIR="$HOME/.nextcloud/certificates/$APP_NAME"` to `make appstore`.
+The default `CERT_DIR` is `~/.nextcloud/certificates` without the app subdirectory.
+Local packaging reads the private key from `CERT_DIR` and downloads the public
+certificate if needed; it does not read `appstore-token` or upload to the app
+store. The release workflow consumes the token as `APPSTORE_TOKEN`. It is
+required for stable app store uploads; if you only want GitHub releases, set
+`upload-to-appstore: false` instead.
+
 ### Build archive names and checkout provenance
 
 The shared build workflow keeps the version-only archive and artifact names for

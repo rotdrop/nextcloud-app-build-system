@@ -624,7 +624,7 @@ change the application's default goal.
 
 ### Filling in toolkit translations
 
-`make LANG=de fill-toolkit-translations` adds the German translations shipped
+`make L10N=de fill-toolkit-translations` adds the German translations shipped
 by the toolkits (`translationfiles/LANG/nextcloud-app-toolkit.po` in
 `APP_TOOLKIT_DIR` and `translationfiles/LANG/nextcloud-app-toolkit-js.po` in
 `src/toolkit`) to `translationfiles/LANG/$(APP_NAME).po`. Only msgids present
@@ -632,13 +632,13 @@ in `translationfiles/templates/$(APP_NAME).pot` are added, and the app's own
 non-fuzzy translations and all other entries are left untouched. Run it after
 regenerating the template. Existing translations which differ from the
 toolkit's are reported as conflicts on stderr (showing both variants) and
-kept; `make LANG=de L10N_FILL_FLAGS=--force fill-toolkit-translations`
-overwrites them. `make LANG=de check-toolkit-translations` is a dry-run
+kept; `make L10N=de L10N_FILL_FLAGS=--force fill-toolkit-translations`
+overwrites them. `make L10N=de check-toolkit-translations` is a dry-run
 (`--check` of `scripts/fill-toolkit-translations.sh`) which only lists the
-missing and conflicting translations. `LANG` must be given on the make command line;
-the environment's `LANG` is ignored. Override `L10N_TOOLKIT_PO_FILES`,
-`L10N_TEMPLATE` or `L10N_TRANSLATIONS_DIR` for other locations. Requires GNU
-gettext tools.
+missing and conflicting translations. `L10N` must be given on the make command
+line; the environment's `LANG` is not used as the translation selector.
+Override `L10N_TOOLKIT_PO_FILES`, `L10N_TEMPLATE` or
+`L10N_TRANSLATIONS_DIR` for other locations. Requires GNU gettext tools.
 
 ### Excluding unused package files
 

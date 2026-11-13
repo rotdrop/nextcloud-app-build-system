@@ -149,7 +149,10 @@ async function vueIgnore(app, configFile, ignoreFile, keepFile, modes) {
               && (!info || info.isExternal || info.code === null)) {
               throw new Error(`Cannot analyze externalized ${packageName} modules: ${id}`)
             }
-            if (info?.code?.includes('import')) {
+            // Dynamic imports of unrelated third-party dependencies cannot
+            // reach the analyzed library, so only check the library and app code.
+            const thirdParty = id.includes('/node_modules/') && !id.startsWith(`${root}/`)
+            if (!thirdParty && info?.code?.includes('import')) {
               checkDynamicImports(this.parse(info.code), id)
             }
             for (const dependency of [...(info?.importedIds || []), ...(info?.dynamicallyImportedIds || [])]) {

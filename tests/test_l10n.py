@@ -379,7 +379,7 @@ class L10nMakefileTest(unittest.TestCase):
         self.assertIn("23", result.stderr)
         self.assertFalse((self.output / "vue-components-strings.js").exists())
 
-    def test_fill_toolkit_translations_adds_only_template_strings(self):
+    def fill_fixture(self):
         def po(*entries):
             header = 'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n\n'
             return header + "".join(f'msgid "{i}"\nmsgstr "{t}"\n\n' for i, t in entries)
@@ -388,14 +388,36 @@ class L10nMakefileTest(unittest.TestCase):
         self.write("translationfiles/de/app.po", po(("A", "own"), ("B", ""), ("Gone", "kept")))
         self.write(f"vendor/{TOOLKIT}/translationfiles/de/nextcloud-app-toolkit.po",
                    po(("A", "toolkit"), ("B", "tk-b"), ("Other", "tk-other")))
-        arguments = ("APP_NAME=app", f"APP_TOOLKIT_DIR={self.app}/vendor/{TOOLKIT}")
-        self.make("LANG=de", *arguments, "fill-toolkit-translations")
+        return ("APP_NAME=app", f"APP_TOOLKIT_DIR={self.app}/vendor/{TOOLKIT}")
+
+    def test_fill_toolkit_translations_adds_only_template_strings(self):
+        arguments = self.fill_fixture()
+        result = self.make("LANG=de", *arguments, "fill-toolkit-translations")
+        self.assertIn("conflicting", result.stderr)
+        self.assertIn('"A"', result.stderr)
+        self.assertIn('"B"', result.stdout)
         result = (self.app / "translationfiles/de/app.po").read_text()
         self.assertIn('msgid "A"\nmsgstr "own"', result)
         self.assertIn('msgid "B"\nmsgstr "tk-b"', result)
         self.assertIn('msgid "Gone"\nmsgstr "kept"', result)
         self.assertNotIn("Other", result)
-        self.assertNotIn("toolkit", result)
+        self.assertNotIn("tk-other", result)
+
+    def test_fill_toolkit_translations_force_overwrites_conflicts(self):
+        arguments = self.fill_fixture()
+        self.make("LANG=de", *arguments, "L10N_FILL_FLAGS=--force", "fill-toolkit-translations")
+        result = (self.app / "translationfiles/de/app.po").read_text()
+        self.assertIn('msgid "A"\nmsgstr "toolkit"', result)
+        self.assertIn('msgid "Gone"\nmsgstr "kept"', result)
+
+    def test_check_toolkit_translations_does_not_write(self):
+        arguments = self.fill_fixture()
+        path = self.app / "translationfiles/de/app.po"
+        before = path.read_text()
+        result = self.make("LANG=de", *arguments, "check-toolkit-translations")
+        self.assertIn('"B"', result.stdout)
+        self.assertIn('"A"', result.stderr)
+        self.assertEqual(path.read_text(), before)
 
     def test_fill_toolkit_translations_requires_language_on_command_line(self):
         self.make("APP_NAME=app", "fill-toolkit-translations", success=False,

@@ -630,7 +630,12 @@ by the toolkits (`translationfiles/LANG/nextcloud-app-toolkit.po` in
 `src/toolkit`) to `translationfiles/LANG/$(APP_NAME).po`. Only msgids present
 in `translationfiles/templates/$(APP_NAME).pot` are added, and the app's own
 non-fuzzy translations and all other entries are left untouched. Run it after
-regenerating the template. `LANG` must be given on the make command line;
+regenerating the template. Existing translations which differ from the
+toolkit's are reported as conflicts on stderr (showing both variants) and
+kept; `make LANG=de L10N_FILL_FLAGS=--force fill-toolkit-translations`
+overwrites them. `make LANG=de check-toolkit-translations` is a dry-run
+(`--check` of `scripts/fill-toolkit-translations.sh`) which only lists the
+missing and conflicting translations. `LANG` must be given on the make command line;
 the environment's `LANG` is ignored. Override `L10N_TOOLKIT_PO_FILES`,
 `L10N_TEMPLATE` or `L10N_TRANSLATIONS_DIR` for other locations. Requires GNU
 gettext tools.

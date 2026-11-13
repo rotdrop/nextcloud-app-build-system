@@ -392,7 +392,7 @@ class L10nMakefileTest(unittest.TestCase):
 
     def test_fill_toolkit_translations_adds_only_template_strings(self):
         arguments = self.fill_fixture()
-        result = self.make("LANG=de", *arguments, "fill-toolkit-translations")
+        result = self.make("L10N=de", *arguments, "fill-toolkit-translations")
         self.assertIn("conflicting", result.stderr)
         self.assertIn('"A"', result.stderr)
         self.assertIn('"B"', result.stdout)
@@ -405,7 +405,7 @@ class L10nMakefileTest(unittest.TestCase):
 
     def test_fill_toolkit_translations_force_overwrites_conflicts(self):
         arguments = self.fill_fixture()
-        self.make("LANG=de", *arguments, "L10N_FILL_FLAGS=--force", "fill-toolkit-translations")
+        self.make("L10N=de", *arguments, "L10N_FILL_FLAGS=--force", "fill-toolkit-translations")
         result = (self.app / "translationfiles/de/app.po").read_text()
         self.assertIn('msgid "A"\nmsgstr "toolkit"', result)
         self.assertIn('msgid "Gone"\nmsgstr "kept"', result)
@@ -414,14 +414,14 @@ class L10nMakefileTest(unittest.TestCase):
         arguments = self.fill_fixture()
         path = self.app / "translationfiles/de/app.po"
         before = path.read_text()
-        result = self.make("LANG=de", *arguments, "check-toolkit-translations")
+        result = self.make("L10N=de", *arguments, "check-toolkit-translations")
         self.assertIn('"B"', result.stdout)
         self.assertIn('"A"', result.stderr)
         self.assertEqual(path.read_text(), before)
 
     def test_fill_toolkit_translations_requires_language_on_command_line(self):
         self.make("APP_NAME=app", "fill-toolkit-translations", success=False,
-                  env={**os.environ, "LANG": "de_DE.UTF-8"})
+                  env={**os.environ, "LANG": "de_DE.UTF-8", "L10N": "de"})
 
 
 if __name__ == "__main__":

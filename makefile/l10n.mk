@@ -21,8 +21,8 @@ L10N_FILL_FLAGS ?=
 L10N_TRANSLATIONS_DIR ?= $(ABSSRCDIR)/translationfiles
 L10N_TEMPLATE ?= $(L10N_TRANSLATIONS_DIR)/templates/$(APP_NAME).pot
 L10N_TOOLKIT_PO_FILES ?= \
-	$(APP_TOOLKIT_DIR)/translationfiles/$(LANG)/nextcloud-app-toolkit.po \
-	$(ABSSRCDIR)/src/toolkit/translationfiles/$(LANG)/nextcloud-app-toolkit-js.po
+	$(APP_TOOLKIT_DIR)/translationfiles/$(L10N)/nextcloud-app-toolkit.po \
+	$(ABSSRCDIR)/src/toolkit/translationfiles/$(L10N)/nextcloud-app-toolkit-js.po
 
 _L10N_DEFAULT_GOAL := $(.DEFAULT_GOAL)
 _L10N_COMPOSER_MANIFESTS := $(strip \
@@ -69,9 +69,9 @@ ifneq ($(_L10N_HAS_VUE_COMPONENTS),)
 endif
 .PHONY: vue-components-l10n
 
-fill-toolkit-translations: ## Add missing toolkit translations to translationfiles/$(LANG), e.g. make LANG=de fill-toolkit-translations; L10N_FILL_FLAGS=--force overwrites
-	@test "$(origin LANG)" = "command line" || { echo "Set LANG on the command line, e.g. make LANG=de $@" >&2; exit 1; }
-	$(_L10N_FILL_SCRIPT) $(L10N_FILL_FLAGS) "$(LANG)" "$(L10N_TEMPLATE)" "$(L10N_TRANSLATIONS_DIR)/$(LANG)/$(APP_NAME).po" $(L10N_TOOLKIT_PO_FILES)
+fill-toolkit-translations: ## Add missing toolkit translations to translationfiles/$(L10N), e.g. make L10N=de fill-toolkit-translations; L10N_FILL_FLAGS=--force overwrites
+	@test "$(origin L10N)" = "command line" || { echo "Set L10N on the command line, e.g. make L10N=de $@" >&2; exit 1; }
+	$(_L10N_FILL_SCRIPT) $(L10N_FILL_FLAGS) "$(L10N)" "$(L10N_TEMPLATE)" "$(L10N_TRANSLATIONS_DIR)/$(L10N)/$(APP_NAME).po" $(L10N_TOOLKIT_PO_FILES)
 .PHONY: fill-toolkit-translations
 
 check-toolkit-translations: L10N_FILL_FLAGS += --check

@@ -16,6 +16,13 @@ VUE_COMPONENTS_L10N_IGNORE ?= $(wildcard $(L10N_IGNORE))
 L10N_VITE_CONFIG ?=
 L10N_VITE_MODES ?= development production
 _L10N_IGNORE_SCRIPT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../scripts/l10n-ignore.mjs)
+_L10N_FILL_SCRIPT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../scripts/fill-toolkit-translations.sh)
+L10N_FILL_FLAGS ?=
+L10N_TRANSLATIONS_DIR ?= $(ABSSRCDIR)/translationfiles
+L10N_TEMPLATE ?= $(L10N_TRANSLATIONS_DIR)/templates/$(APP_NAME).pot
+L10N_TOOLKIT_PO_FILES ?= \
+	$(APP_TOOLKIT_DIR)/translationfiles/$(LANG)/nextcloud-app-toolkit.po \
+	$(ABSSRCDIR)/src/toolkit/translationfiles/$(LANG)/nextcloud-app-toolkit-js.po
 
 _L10N_DEFAULT_GOAL := $(.DEFAULT_GOAL)
 _L10N_COMPOSER_MANIFESTS := $(strip \
@@ -61,6 +68,15 @@ ifneq ($(_L10N_HAS_VUE_COMPONENTS),)
 	cd "$(ABSSRCDIR)" && $(NPX) --no-install @rotdrop/nextcloud-vue-components extract-l10n-strings "$(VUE_COMPONENTS_L10N_DEST)" $(if $(VUE_COMPONENTS_L10N_IGNORE),"$(VUE_COMPONENTS_L10N_IGNORE)")
 endif
 .PHONY: vue-components-l10n
+
+fill-toolkit-translations: ## Add missing toolkit translations to translationfiles/$(LANG), e.g. make LANG=de fill-toolkit-translations; L10N_FILL_FLAGS=--force overwrites
+	@test "$(origin LANG)" = "command line" || { echo "Set LANG on the command line, e.g. make LANG=de $@" >&2; exit 1; }
+	$(_L10N_FILL_SCRIPT) $(L10N_FILL_FLAGS) "$(LANG)" "$(L10N_TEMPLATE)" "$(L10N_TRANSLATIONS_DIR)/$(LANG)/$(APP_NAME).po" $(L10N_TOOLKIT_PO_FILES)
+.PHONY: fill-toolkit-translations
+
+check-toolkit-translations: L10N_FILL_FLAGS += --check
+check-toolkit-translations: fill-toolkit-translations ## Dry-run of fill-toolkit-translations: list missing and conflicting translations
+.PHONY: check-toolkit-translations
 
 l10n-ignore: vue-components-l10n-ignore ## Update only the generated Vue exclusions; run explicitly before l10n-sources
 .PHONY: l10n-ignore

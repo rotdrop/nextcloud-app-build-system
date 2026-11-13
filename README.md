@@ -645,7 +645,8 @@ Only library source files absent from every analyzed module graph are excluded.
 Lazy chunks, transitive imports, and even parsed
 but tree-shaken modules are retained deliberately; barrel imports can therefore
 keep more translations than strictly necessary. Compilation errors, warnings,
-unresolved runtime dynamic imports (including `@vite-ignore` imports), and
+unresolved runtime dynamic imports (including `@vite-ignore` imports) in the
+library or application sources (third-party `node_modules` code is exempt), and
 directly externalized library modules abort generation without changing the
 ignore file. This is static
 build analysis, not proof of runtime non-use: custom loaders, external mappings,

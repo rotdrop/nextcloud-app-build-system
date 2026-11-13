@@ -29,6 +29,10 @@ if [ -z "$lang" ] || [ ! -f "$template" ]; then
   echo "fill-toolkit-translations: language and template \"$template\" are required." >&2; exit 1
 fi
 
+for tool in msgattrib msgcat msgcomm msgmerge msginit; do
+  command -v "$tool" >/dev/null || { echo "fill-toolkit-translations: GNU gettext tool \"$tool\" is required." >&2; exit 1; }
+done
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

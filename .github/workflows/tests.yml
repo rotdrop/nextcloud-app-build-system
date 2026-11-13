@@ -16,5 +16,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Install GNU gettext
+        run: sudo apt-get install -y --no-install-recommends gettext
       - name: Run Makefile integration tests
         run: python3 -B -m unittest discover -s tests -p 'test_*.py' -v

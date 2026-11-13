@@ -379,6 +379,28 @@ class L10nMakefileTest(unittest.TestCase):
         self.assertIn("23", result.stderr)
         self.assertFalse((self.output / "vue-components-strings.js").exists())
 
+    def test_fill_toolkit_translations_adds_only_template_strings(self):
+        def po(*entries):
+            header = 'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n\n'
+            return header + "".join(f'msgid "{i}"\nmsgstr "{t}"\n\n' for i, t in entries)
+
+        self.write("translationfiles/templates/app.pot", po(("A", ""), ("B", ""), ("C", "")))
+        self.write("translationfiles/de/app.po", po(("A", "own"), ("B", ""), ("Gone", "kept")))
+        self.write(f"vendor/{TOOLKIT}/translationfiles/de/nextcloud-app-toolkit.po",
+                   po(("A", "toolkit"), ("B", "tk-b"), ("Other", "tk-other")))
+        arguments = ("APP_NAME=app", f"APP_TOOLKIT_DIR={self.app}/vendor/{TOOLKIT}")
+        self.make("LANG=de", *arguments, "fill-toolkit-translations")
+        result = (self.app / "translationfiles/de/app.po").read_text()
+        self.assertIn('msgid "A"\nmsgstr "own"', result)
+        self.assertIn('msgid "B"\nmsgstr "tk-b"', result)
+        self.assertIn('msgid "Gone"\nmsgstr "kept"', result)
+        self.assertNotIn("Other", result)
+        self.assertNotIn("toolkit", result)
+
+    def test_fill_toolkit_translations_requires_language_on_command_line(self):
+        self.make("APP_NAME=app", "fill-toolkit-translations", success=False,
+                  env={**os.environ, "LANG": "de_DE.UTF-8"})
+
 
 if __name__ == "__main__":
     unittest.main()

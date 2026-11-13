@@ -622,6 +622,19 @@ app directory using `npx --no-install` to avoid implicit package downloads.
 `vue-components-l10n` are also available. Including the fragment does not
 change the application's default goal.
 
+### Filling in toolkit translations
+
+`make LANG=de fill-toolkit-translations` adds the German translations shipped
+by the toolkits (`translationfiles/LANG/nextcloud-app-toolkit.po` in
+`APP_TOOLKIT_DIR` and `translationfiles/LANG/nextcloud-app-toolkit-js.po` in
+`src/toolkit`) to `translationfiles/LANG/$(APP_NAME).po`. Only msgids present
+in `translationfiles/templates/$(APP_NAME).pot` are added, and the app's own
+non-fuzzy translations and all other entries are left untouched. Run it after
+regenerating the template. `LANG` must be given on the make command line;
+the environment's `LANG` is ignored. Override `L10N_TOOLKIT_PO_FILES`,
+`L10N_TEMPLATE` or `L10N_TRANSLATIONS_DIR` for other locations. Requires GNU
+gettext tools.
+
 ### Excluding unused package files
 
 For Vite apps, run `make l10n-ignore` (also named

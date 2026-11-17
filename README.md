@@ -42,8 +42,14 @@ explicitly with `make update-package-lock`, which runs
 `chore(deps): update package-lock.json` on the branch
 `chore/update-package-lock` (override with `PACKAGE_LOCK_BRANCH`), pushes that
 branch and opens a pull request against the current branch with `gh`, then
-switches back to the original branch; it does nothing if the lockfile is
-unchanged. Run `make update-package-lock` separately before
+switches back to the original branch. The starting branch's tracking remote
+is used for both the push and the PR repository, falling back to `origin` when
+no tracking remote is configured. The remote URL is passed explicitly to
+`gh --repo`; no default repository is needed or set. Detached HEADs and branches
+tracking a local branch are rejected before committing. PR creation failures
+are reported as errors after switching back to the original branch.
+The target does nothing if the lockfile is unchanged.
+Run `make update-package-lock` separately before
 `make commit-package-lock` when you intend to update dependencies.
 
 `make mostlyclean` preserves `package-lock.json`; `make realclean` removes it,

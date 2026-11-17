@@ -194,6 +194,117 @@ class NpmMakefileTest(unittest.TestCase):
             check=True,
         )
 
+    def prepare_lockfile_commit(self, remote="upstream", tracking=True):
+        self.make_git("init", "-q")
+        self.make_git("config", "user.email", "test@example.com")
+        self.make_git("config", "user.name", "Test")
+        self.make_git("add", "package-lock.json")
+        self.make_git("commit", "-qm", "initial")
+        self.make_git("branch", "-M", "feature/dependencies")
+        repository = "git@github.com:example/app.git"
+        bare = self.app / "remote.git"
+        self.make_git("init", "--bare", "-q", str(bare))
+        self.make_git("remote", "add", remote, repository)
+        self.make_git("remote", "set-url", "--push", remote, str(bare))
+        self.make_git("push", *(["-u"] if tracking else []), remote, "HEAD")
+        if remote != "origin":
+            self.make_git("remote", "add", "origin", "https://github.com/wrong/app.git")
+        self.write("package-lock.json", "updated\n")
+        self.write(
+            "bin/gh",
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$@\" > gh.log\n"
+            "exit \"${GH_EXIT_CODE:-0}\"\n",
+        )
+        (self.app / "bin/gh").chmod(0o755)
+        return {
+            **os.environ,
+            "PATH": f"{self.app / 'bin'}:{os.environ['PATH']}",
+        }
+
+    def test_commit_package_lock_uses_starting_branch_remote(self):
+        env = self.prepare_lockfile_commit()
+        self.write("source.js", "unrelated change\n")
+
+        self.make("commit-package-lock", env=env)
+
+        self.assertEqual(
+            (self.app / "gh.log").read_text().splitlines(),
+            [
+                "pr", "create", "--repo", "git@github.com:example/app.git",
+                "--base", "feature/dependencies",
+                "--head", "chore/update-package-lock",
+                "--title", "chore(deps): update package-lock.json",
+                "--body", "Automated update of package-lock.json.",
+            ],
+        )
+        self.assertEqual(
+            self.make_git("branch", "--show-current").stdout.strip(),
+            "feature/dependencies",
+        )
+        self.assertEqual(
+            self.make_git(
+                "config", "--get", "branch.chore/update-package-lock.remote"
+            ).stdout.strip(),
+            "upstream",
+        )
+        self.assertEqual(
+            self.make_git(
+                "diff-tree", "--no-commit-id", "--name-only", "-r",
+                "chore/update-package-lock",
+            ).stdout.splitlines(),
+            ["package-lock.json"],
+        )
+        self.assertEqual((self.app / "source.js").read_text(), "unrelated change\n")
+
+    def test_commit_package_lock_falls_back_to_origin_without_tracking_remote(self):
+        env = self.prepare_lockfile_commit(remote="origin", tracking=False)
+        self.make_git("remote", "set-url", "origin", "https://github.com/example/app.git")
+
+        self.make("commit-package-lock", env=env)
+
+        arguments = (self.app / "gh.log").read_text().splitlines()
+        self.assertEqual(arguments[2:4], ["--repo", "https://github.com/example/app.git"])
+        self.assertEqual(
+            self.make_git(
+                "config", "--get", "branch.chore/update-package-lock.remote"
+            ).stdout.strip(),
+            "origin",
+        )
+
+    def test_commit_package_lock_reports_pr_failure_and_restores_branch(self):
+        env = self.prepare_lockfile_commit()
+
+        self.make("commit-package-lock", success=False, env={**env, "GH_EXIT_CODE": "1"})
+
+        self.assertTrue((self.app / "gh.log").exists())
+        self.assertEqual(
+            self.make_git("branch", "--show-current").stdout.strip(),
+            "feature/dependencies",
+        )
+
+    def test_commit_package_lock_rejects_unresolvable_repository_before_commit(self):
+        env = self.prepare_lockfile_commit()
+        initial = self.make_git("rev-parse", "HEAD").stdout
+        for scenario in ("missing-remote", "local-tracking", "detached"):
+            with self.subTest(scenario=scenario):
+                if scenario == "missing-remote":
+                    self.make_git("config", "branch.feature/dependencies.remote", "missing")
+                elif scenario == "local-tracking":
+                    self.make_git("config", "branch.feature/dependencies.remote", ".")
+                else:
+                    self.make_git("checkout", "--detach")
+
+                self.make("commit-package-lock", success=False, env=env)
+
+                self.assertEqual(self.make_git("rev-parse", "HEAD").stdout, initial)
+                self.assertEqual((self.app / "package-lock.json").read_text(), "updated\n")
+                self.assertFalse((self.app / "gh.log").exists())
+                self.assertEqual(
+                    self.make_git("branch", "--list", "chore/update-package-lock").stdout,
+                    "",
+                )
+
     def test_legacy_and_neutral_dependencies_are_combined(self):
         self.configure("BUNDLER_DEPS = source.js\nWEBPACK_DEPS = legacy.js\n")
         lines = self.make("print-deps").stdout.splitlines()

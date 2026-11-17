@@ -104,15 +104,20 @@ commit-package-lock: ## Open a pull request for a changed package-lock.json (no-
 	$(SILENT)if git diff --quiet HEAD -- package-lock.json; then\
 	  echo "package-lock.json is unchanged, nothing to do.";\
 	else\
-	  base=$$(git rev-parse --abbrev-ref HEAD) && \
+	  base=$$(git symbolic-ref --quiet --short HEAD) || \
+	    { echo "commit-package-lock requires a checked-out branch." >&2; exit 1; }; \
+	  remote=$$(git config --get "branch.$$base.remote") || remote=origin; \
+	  if [ "$$remote" = "." ]; then \
+	    echo "The starting branch tracks a local branch, not a remote repository." >&2; exit 1; \
+	  fi; \
+	  repository=$$(git remote get-url "$$remote") || exit $$?; \
 	  git checkout -B "$(PACKAGE_LOCK_BRANCH)" && \
 	  git commit -m "chore(deps): update package-lock.json" -- package-lock.json && \
-	  git push --force-with-lease -u origin "$(PACKAGE_LOCK_BRANCH)" && \
-	  { gh pr create --base "$$base" --head "$(PACKAGE_LOCK_BRANCH)" \
+	  git push --force-with-lease -u "$$remote" "$(PACKAGE_LOCK_BRANCH)" && \
+	  gh pr create --repo "$$repository" --base "$$base" --head "$(PACKAGE_LOCK_BRANCH)" \
 	      --title "chore(deps): update package-lock.json" \
-	      --body "Automated update of package-lock.json." \
-	    || echo "A pull request for $(PACKAGE_LOCK_BRANCH) may already exist."; }; \
-	  status=$$?; git checkout "$$base"; exit $$status;\
+	      --body "Automated update of package-lock.json."; \
+	  status=$$?; git checkout "$$base" || exit $$?; exit $$status;\
 	fi
 .PHONY: commit-package-lock
 

@@ -432,6 +432,19 @@ class VariableTest(AppMakefileTestCase):
         self.assertNotIn("DRY", out)
         self.assertNotRegex(out, r"(?m)^  [A-Za-z_]+\s*:?=")
 
+    def test_help_lists_continuation_comment_lines(self):
+        self.configure(
+            rules=(
+                "multi-line-help: ## First line of help\n"
+                "## Additional details\n"
+                "## A final note\n"
+            ),
+        )
+        out = self.make("help").stdout
+        self.assertRegex(out, r"(?m)^  multi-line-help\s+First line of help$")
+        self.assertRegex(out, r"(?m)^ {27}Additional details$")
+        self.assertRegex(out, r"(?m)^ {27}A final note$")
+
     def test_version_is_read_from_info_xml(self):
         self.assertEqual(self.variable("APP_VERSION"), "1.2.3")
         self.assertIn("fixtureapp-1.2.3.tar.gz", self.variable("APPSTORE_PACKAGE_FILE"))

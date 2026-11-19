@@ -105,16 +105,38 @@ BUNDLER_CONFIG ?= vite.config.ts
 
 ###############################################################################
 #
-# Help: only rules with a trailing "## description" comment on the rule line
-# are listed, undocumented rules and variable assignments are ignored.
+# Help: documented rules may continue their description on immediately
+# following "## description" comment lines.
 
 help: ## Show this help
 	@echo "Usage: make [target]"; echo; echo "Targets:"
-	@awk 'match($$0, /^[A-Za-z0-9_.-]+[ \t]*:([^=]|$$)/) && index($$0, "##") {\
-	  name = $$0; sub(/[ \t]*:.*/, "", name);\
-	  desc = $$0; sub(/^[^#]*##[ \t]*/, "", desc);\
-	  if (!(name in seen)) { seen[name] = 1; printf "  %-24s %s\n", name, desc }\
-	}' $(MAKEFILE_LIST)
+	@awk '\
+	  function flush() {\
+	    if (pending && !(pending_name in seen)) {\
+	      seen[pending_name] = 1;\
+	      printf "  %-24s %s\n", pending_name, pending_desc;\
+	      width = length(pending_name);\
+	      if (width < 24) width = 24;\
+	      for (i = 1; i <= continuation_count; i++)\
+	        printf "  %*s %s\n", width, "", continuation[i];\
+	    }\
+	    pending = 0; continuation_count = 0;\
+	  }\
+	  FNR == 1 { flush() }\
+	  pending && /^[ \t]*##[ \t]+/ {\
+	    line = $$0; sub(/^[ \t]*##[ \t]/, "", line);\
+	    continuation[++continuation_count] = line; next;\
+	  }\
+	  {\
+	    flush();\
+	    if (match($$0, /^[A-Za-z0-9_.-]+[ \t]*:([^=]|$$)/) && index($$0, "##")) {\
+	      pending_name = $$0; sub(/[ \t]*:.*/, "", pending_name);\
+	      pending_desc = $$0; sub(/^[^#]*##[ \t]*/, "", pending_desc);\
+	      pending = 1;\
+	    }\
+	  }\
+	  END { flush() }\
+	' $(MAKEFILE_LIST)
 .PHONY: help
 
 ###############################################################################

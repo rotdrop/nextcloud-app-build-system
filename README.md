@@ -131,9 +131,18 @@ header of `app.mk`: `APP_DEV_SETUP_DEPS`, `APP_REQUIRED_TOOLS`,
 
 `make help` (the default goal) lists the rules that carry a trailing
 `## description` comment on the rule line, e.g.
-`lint: ## Linting`. Rules without such a comment and variable assignments
-(`:=`) are not listed. Apps no longer need the `dev-scripts/MakeHelp`
-submodule and should remove it.
+`lint: ## Linting`. For a multi-line description, put each continuation
+immediately below the target on its own `##` comment line:
+
+```make
+lint: ## Lint the project sources
+## Also checks the generated files.
+## Run `make lint-fix` to apply automatic fixes.
+```
+
+Rules without a description comment and variable assignments (`:=`) are not
+listed. Apps no longer need the `dev-scripts/MakeHelp` submodule and should
+remove it.
 
 ### Bash target completion
 
